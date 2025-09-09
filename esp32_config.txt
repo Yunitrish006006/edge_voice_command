@@ -1,0 +1,10 @@
+ESP32 MQTT 配置
+主機 IP: 10.109.91.204
+端口: 1883
+配置時間: YunRog
+
+// ESP32 MQTT 配置 (複製到 main.cpp)
+const char *mqtt_server = "10.109.91.204";
+const int mqtt_port = 1883;
+const char *mqtt_topic = "esp32/voice_command";
+const char *client_id = "ESP32_Voice_Command";

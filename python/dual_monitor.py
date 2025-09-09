@@ -255,12 +255,14 @@ class MQTTMessageWindow:
         
     def _on_connect(self, client, userdata, flags, rc):
         """MQTT 連接回調"""
+        print(f"[DEBUG] MQTT連接回調: rc={rc}")
         if rc == 0:
             self.connected = True
             self.message_queue.put(("status", "connected"))
             # 訂閱所有主題
             client.subscribe("esp32/+")
             client.subscribe("#")  # 訂閱所有主題以便調適
+            print("[DEBUG] 已訂閱主題: esp32/+, #")
             
             # 更新訂閱主題列表
             self.subscribed_topics.add("esp32/+")
@@ -277,6 +279,9 @@ class MQTTMessageWindow:
             payload = msg.payload.decode('utf-8')
         except UnicodeDecodeError:
             payload = str(msg.payload)
+            
+        # 調適輸出
+        print(f"[DEBUG] 收到MQTT訊息: {topic} -> {payload}")
             
         self.message_queue.put(("message", {
             "timestamp": timestamp,
@@ -336,6 +341,9 @@ class MQTTMessageWindow:
         timestamp = data["timestamp"]
         topic = data["topic"]
         payload = data["payload"]
+        
+        # 調適輸出
+        print(f"[DEBUG] 更新GUI顯示: {topic} -> {payload}")
         
         # 更新計數器
         self.message_count += 1

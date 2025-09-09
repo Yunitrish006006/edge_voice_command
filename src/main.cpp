@@ -2,11 +2,11 @@
 #include "mqtt_manager.h"
 
 // WiFi 設定
-const char *ssid = "YUNROG";
+const char *ssid = "Yun";
 const char *password = "0937565253";
 
 // MQTT 設定
-const char *mqtt_server = "192.168.98.106"; // 自建 MQTT broker IP
+const char *mqtt_server = "10.109.91.204"; // 自建 MQTT broker IP
 const int mqtt_port = 1883;
 const char *client_id = "ESP32_Heartbeat_Test";
 
