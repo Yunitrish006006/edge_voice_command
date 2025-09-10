@@ -119,10 +119,75 @@ class MQTTMonitorClient:
         self.message_text = scrolledtext.ScrolledText(
             message_frame, 
             wrap=tk.WORD, 
-            height=20,
+            height=15,  # 縮小高度為發送區域讓位
             font=("Consolas", 10)
         )
         self.message_text.pack(fill=tk.BOTH, expand=True)
+        
+        # 發送訊息區域
+        send_frame = ttk.LabelFrame(main_frame, text="發送 MQTT 訊息", padding="5")
+        send_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # 發送主題輸入
+        topic_send_frame = ttk.Frame(send_frame)
+        topic_send_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        ttk.Label(topic_send_frame, text="發送主題:").pack(side=tk.LEFT)
+        self.send_topic_entry = ttk.Entry(topic_send_frame, width=30)
+        self.send_topic_entry.pack(side=tk.LEFT, padx=(5, 10))
+        self.send_topic_entry.insert(0, "esp32/command")
+        
+        # 快速主題按鈕
+        quick_topics = [("命令", "esp32/command"), ("控制", "esp32/control"), ("測試", "test/message")]
+        for name, topic in quick_topics:
+            btn = ttk.Button(topic_send_frame, text=name, width=8,
+                           command=lambda t=topic: self._set_send_topic(t))
+            btn.pack(side=tk.LEFT, padx=(0, 3))
+        
+        # 發送訊息輸入
+        message_send_frame = ttk.Frame(send_frame)
+        message_send_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        ttk.Label(message_send_frame, text="發送內容:").pack(side=tk.LEFT)
+        self.send_message_entry = ttk.Entry(message_send_frame, width=50)
+        self.send_message_entry.pack(side=tk.LEFT, padx=(5, 10), fill=tk.X, expand=True)
+        self.send_message_entry.bind('<Return>', lambda e: self._send_message())
+        
+        # 發送按鈕
+        send_btn = ttk.Button(message_send_frame, text="📤 發送", 
+                             command=self._send_message)
+        send_btn.pack(side=tk.RIGHT, padx=(5, 0))
+        
+        # QoS 選擇
+        qos_frame = ttk.Frame(send_frame)
+        qos_frame.pack(fill=tk.X)
+        
+        ttk.Label(qos_frame, text="QoS:").pack(side=tk.LEFT)
+        self.qos_var = tk.StringVar(value="0")
+        qos_combo = ttk.Combobox(qos_frame, textvariable=self.qos_var, 
+                                width=5, values=["0", "1", "2"], state="readonly")
+        qos_combo.pack(side=tk.LEFT, padx=(5, 20))
+        
+        # 保留訊息選項
+        self.retain_var = tk.BooleanVar()
+        retain_check = ttk.Checkbutton(qos_frame, text="保留訊息 (Retain)", 
+                                      variable=self.retain_var)
+        retain_check.pack(side=tk.LEFT, padx=(0, 20))
+        
+        # 預設訊息按鈕
+        preset_msg_frame = ttk.Frame(qos_frame)
+        preset_msg_frame.pack(side=tk.RIGHT)
+        
+        preset_messages = [
+            ("開燈", "LED_ON"), 
+            ("關燈", "LED_OFF"), 
+            ("重啟", "RESTART"),
+            ("狀態", "GET_STATUS")
+        ]
+        for name, msg in preset_messages:
+            btn = ttk.Button(preset_msg_frame, text=name, width=8,
+                           command=lambda m=msg: self._set_send_message(m))
+            btn.pack(side=tk.LEFT, padx=(0, 3))
         
         # 底部控制框架
         control_frame = ttk.Frame(main_frame)
@@ -341,6 +406,70 @@ class MQTTMonitorClient:
         message_line = f"[{timestamp}] ℹ️ {message}\n"
         self.message_text.insert(tk.END, message_line)
         self.message_text.see(tk.END)
+    
+    def _set_send_topic(self, topic):
+        """設定發送主題"""
+        self.send_topic_entry.delete(0, tk.END)
+        self.send_topic_entry.insert(0, topic)
+        self.send_message_entry.focus()
+    
+    def _set_send_message(self, message):
+        """設定發送訊息"""
+        self.send_message_entry.delete(0, tk.END)
+        self.send_message_entry.insert(0, message)
+    
+    def _send_message(self):
+        """發送 MQTT 訊息"""
+        if not self.connected:
+            messagebox.showwarning("連接錯誤", "請先連接到 MQTT Broker")
+            return
+        
+        topic = self.send_topic_entry.get().strip()
+        message = self.send_message_entry.get().strip()
+        
+        if not topic:
+            messagebox.showwarning("輸入錯誤", "請輸入發送主題")
+            self.send_topic_entry.focus()
+            return
+        
+        if not message:
+            messagebox.showwarning("輸入錯誤", "請輸入發送訊息")
+            self.send_message_entry.focus()
+            return
+        
+        try:
+            qos = int(self.qos_var.get())
+            retain = self.retain_var.get()
+            
+            # 發送訊息
+            result = self.mqtt_client.publish(topic, message, qos=qos, retain=retain)
+            
+            if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                # 顯示發送成功
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                send_info = f"📤 [QoS:{qos}]"
+                if retain:
+                    send_info += " [Retain]"
+                
+                message_line = f"[{timestamp}] {send_info} {topic}: {message}\n"
+                self.message_text.insert(tk.END, message_line)
+                self.message_text.see(tk.END)
+                
+                # 清除輸入框
+                self.send_message_entry.delete(0, tk.END)
+                
+                if self.debug_mode.get():
+                    print(f"[DEBUG] 訊息發送成功: {topic} -> {message}")
+                    
+            else:
+                messagebox.showerror("發送失敗", f"訊息發送失敗: {result.rc}")
+                if self.debug_mode.get():
+                    print(f"[DEBUG] 訊息發送失敗: {result.rc}")
+                    
+        except Exception as e:
+            messagebox.showerror("發送錯誤", f"發送訊息時發生錯誤: {e}")
+            if self.debug_mode.get():
+                print(f"[DEBUG] 發送錯誤: {e}")
     
     def _clear_messages(self):
         """清除所有訊息"""
