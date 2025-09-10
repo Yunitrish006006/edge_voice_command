@@ -10,6 +10,7 @@ import subprocess
 import threading
 import queue
 import time
+import socket
 from datetime import datetime
 import paho.mqtt.client as mqtt
 from config import MQTTConfig
@@ -22,6 +23,9 @@ class BrokerLogWindow:
         self.window.title("MQTT Broker 調適訊息")
         self.window.geometry("800x600")
         
+        # 獲取本機IP地址
+        self.local_ip = self._get_local_ip()
+        
         # 主框架
         main_frame = ttk.Frame(self.window, padding="10")
         main_frame.pack(fill=tk.BOTH, expand=True)
@@ -29,6 +33,15 @@ class BrokerLogWindow:
         # 標題
         title_label = ttk.Label(main_frame, text="🏗️ MQTT Broker 調適訊息", font=("Arial", 14, "bold"))
         title_label.pack(pady=(0, 10))
+        
+        # Broker 資訊框架
+        info_frame = ttk.LabelFrame(main_frame, text="Broker 資訊", padding="5")
+        info_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # IP 地址顯示
+        ip_label = ttk.Label(info_frame, text=f"📍 Broker IP: {self.local_ip}:1883", 
+                            font=("Arial", 10, "bold"), foreground="blue")
+        ip_label.pack(side=tk.LEFT)
         
         # 狀態框架
         status_frame = ttk.LabelFrame(main_frame, text="Broker 狀態", padding="5")
@@ -66,6 +79,23 @@ class BrokerLogWindow:
         
         # 視窗關閉事件
         self.window.protocol("WM_DELETE_WINDOW", self._on_closing)
+    
+    def _get_local_ip(self):
+        """獲取本機IP地址"""
+        try:
+            # 創建一個臨時socket連接來獲取本機IP
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                # 連接到一個不可達的地址，不會真正發送數據
+                s.connect(("8.8.8.8", 80))
+                local_ip = s.getsockname()[0]
+                return local_ip
+        except Exception:
+            try:
+                # 備用方法：獲取hostname對應的IP
+                return socket.gethostbyname(socket.gethostname())
+            except Exception:
+                # 最後的備用選擇
+                return "localhost"
         
     def _toggle_broker(self):
         """切換 Broker 啟動/停止"""
@@ -95,6 +125,8 @@ class BrokerLogWindow:
             self.log_reader_thread.start()
             
             self._add_log("✅ Broker 已啟動")
+            self._add_log(f"📍 Broker 監聽地址: {self.local_ip}:1883")
+            self._add_log(f"🔗 ESP32 可連接至: {self.local_ip}:1883")
             
         except Exception as e:
             self._add_log(f"❌ 啟動 Broker 失敗: {e}")
@@ -220,13 +252,60 @@ class MQTTMessageWindow:
         self.message_count_label.pack(side=tk.LEFT)
         
         # 訂閱主題框架
-        topic_frame = ttk.LabelFrame(main_frame, text="訂閱主題", padding="5")
+        topic_frame = ttk.LabelFrame(main_frame, text="訂閱主題管理", padding="5")
         topic_frame.pack(fill=tk.X, pady=(0, 10))
         
-        # 訂閱主題列表
+        # 目前訂閱的主題顯示
+        current_topics_frame = ttk.Frame(topic_frame)
+        current_topics_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        ttk.Label(current_topics_frame, text="目前訂閱:", font=("Arial", 9, "bold")).pack(side=tk.LEFT)
         self.subscribed_topics = set()
-        self.topic_label = ttk.Label(topic_frame, text="未訂閱任何主題", foreground="gray")
-        self.topic_label.pack(side=tk.LEFT)
+        self.topic_label = ttk.Label(current_topics_frame, text="未訂閱任何主題", foreground="gray")
+        self.topic_label.pack(side=tk.LEFT, padx=(5, 0))
+        
+        # 動態主題管理框架
+        topic_control_frame = ttk.Frame(topic_frame)
+        topic_control_frame.pack(fill=tk.X, pady=(5, 0))
+        
+        # 新主題輸入
+        ttk.Label(topic_control_frame, text="新主題:").pack(side=tk.LEFT)
+        self.new_topic_var = tk.StringVar()
+        self.topic_entry = ttk.Entry(topic_control_frame, textvariable=self.new_topic_var, width=20)
+        self.topic_entry.pack(side=tk.LEFT, padx=(5, 5))
+        
+        # 主題控制按鈕
+        self.subscribe_btn = ttk.Button(topic_control_frame, text="訂閱", command=self._subscribe_topic, state="disabled")
+        self.subscribe_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.unsubscribe_btn = ttk.Button(topic_control_frame, text="取消訂閱", command=self._unsubscribe_topic, state="disabled")
+        self.unsubscribe_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.refresh_btn = ttk.Button(topic_control_frame, text="🔄 刷新", command=self._refresh_topics, state="disabled")
+        self.refresh_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        # 預設主題快速按鈕
+        preset_frame = ttk.Frame(topic_frame)
+        preset_frame.pack(fill=tk.X, pady=(5, 0))
+        
+        ttk.Label(preset_frame, text="快速訂閱:").pack(side=tk.LEFT)
+        
+        preset_topics = [
+            ("ESP32心跳", "esp32/heartbeat"),
+            ("ESP32狀態", "esp32/status"),
+            ("ESP32所有", "esp32/+"),
+            ("全部主題", "#")
+        ]
+        
+        for name, topic in preset_topics:
+            btn = ttk.Button(preset_frame, text=name, 
+                           command=lambda t=topic: self._quick_subscribe(t),
+                           state="disabled")
+            btn.pack(side=tk.LEFT, padx=(5, 0))
+            # 儲存按鈕引用以便控制狀態
+            if not hasattr(self, 'preset_buttons'):
+                self.preset_buttons = []
+            self.preset_buttons.append(btn)
         
         # 訊息日誌框架
         log_frame = ttk.LabelFrame(main_frame, text="MQTT 訊息", padding="5")
@@ -259,14 +338,13 @@ class MQTTMessageWindow:
         if rc == 0:
             self.connected = True
             self.message_queue.put(("status", "connected"))
-            # 訂閱所有主題
-            client.subscribe("esp32/+")
-            client.subscribe("#")  # 訂閱所有主題以便調適
-            print("[DEBUG] 已訂閱主題: esp32/+, #")
+            # 預設訂閱ESP32主題
+            default_topics = ["esp32/+"]
+            for topic in default_topics:
+                client.subscribe(topic)
+                self.subscribed_topics.add(topic)
             
-            # 更新訂閱主題列表
-            self.subscribed_topics.add("esp32/+")
-            self.subscribed_topics.add("#")
+            print(f"[DEBUG] 預設訂閱主題: {default_topics}")
             self.message_queue.put(("topics", list(self.subscribed_topics)))
         else:
             self.message_queue.put(("status", f"error_{rc}"))
@@ -320,13 +398,31 @@ class MQTTMessageWindow:
         if status == "connected":
             self.status_label.config(text=f"狀態: 已連接 ({self.host}:{self.port})", foreground="green")
             self.connect_btn.config(text="斷開")
+            # 啟用主題管理按鈕
+            self._enable_topic_controls(True)
         elif status == "disconnected":
             self.status_label.config(text=f"狀態: 已斷開 ({self.host}:{self.port})", foreground="red")
             self.connect_btn.config(text="連接")
+            # 禁用主題管理按鈕
+            self._enable_topic_controls(False)
         elif status.startswith("error_"):
             error_code = status.split("_")[1]
             self.status_label.config(text=f"狀態: 連接錯誤 ({error_code})", foreground="red")
             self.connect_btn.config(text="連接")
+            # 禁用主題管理按鈕
+            self._enable_topic_controls(False)
+    
+    def _enable_topic_controls(self, enabled):
+        """啟用/禁用主題控制按鈕"""
+        state = "normal" if enabled else "disabled"
+        self.subscribe_btn.config(state=state)
+        self.unsubscribe_btn.config(state=state)
+        self.refresh_btn.config(state=state)
+        
+        # 更新預設主題按鈕狀態
+        if hasattr(self, 'preset_buttons'):
+            for btn in self.preset_buttons:
+                btn.config(state=state)
     
     def _update_subscribed_topics(self, topics):
         """更新訂閱主題顯示"""
@@ -376,6 +472,62 @@ class MQTTMessageWindow:
             mqtt_thread.start()
         except Exception as e:
             self.message_queue.put(("status", f"error_connection: {e}"))
+    
+    def _subscribe_topic(self):
+        """訂閱新主題"""
+        topic = self.new_topic_var.get().strip()
+        if not topic:
+            return
+            
+        if self.connected and topic not in self.subscribed_topics:
+            try:
+                self.mqtt_client.subscribe(topic)
+                self.subscribed_topics.add(topic)
+                self.message_queue.put(("topics", list(self.subscribed_topics)))
+                self.new_topic_var.set("")  # 清空輸入框
+                print(f"[DEBUG] 手動訂閱主題: {topic}")
+            except Exception as e:
+                print(f"[ERROR] 訂閱主題失敗: {e}")
+    
+    def _unsubscribe_topic(self):
+        """取消訂閱主題"""
+        topic = self.new_topic_var.get().strip()
+        if not topic:
+            return
+            
+        if self.connected and topic in self.subscribed_topics:
+            try:
+                self.mqtt_client.unsubscribe(topic)
+                self.subscribed_topics.remove(topic)
+                self.message_queue.put(("topics", list(self.subscribed_topics)))
+                self.new_topic_var.set("")  # 清空輸入框
+                print(f"[DEBUG] 取消訂閱主題: {topic}")
+            except Exception as e:
+                print(f"[ERROR] 取消訂閱失敗: {e}")
+    
+    def _quick_subscribe(self, topic):
+        """快速訂閱預設主題"""
+        if self.connected and topic not in self.subscribed_topics:
+            try:
+                self.mqtt_client.subscribe(topic)
+                self.subscribed_topics.add(topic)
+                self.message_queue.put(("topics", list(self.subscribed_topics)))
+                print(f"[DEBUG] 快速訂閱主題: {topic}")
+            except Exception as e:
+                print(f"[ERROR] 快速訂閱失敗: {e}")
+    
+    def _refresh_topics(self):
+        """刷新訂閱主題"""
+        if self.connected:
+            try:
+                # 重新訂閱所有當前主題
+                current_topics = list(self.subscribed_topics)
+                for topic in current_topics:
+                    self.mqtt_client.subscribe(topic)
+                self.message_queue.put(("topics", current_topics))
+                print(f"[DEBUG] 刷新訂閱主題: {current_topics}")
+            except Exception as e:
+                print(f"[ERROR] 刷新主題失敗: {e}")
             
     def _on_closing(self):
         """視窗關閉事件"""
