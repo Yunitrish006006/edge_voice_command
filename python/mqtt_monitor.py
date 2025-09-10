@@ -285,6 +285,7 @@ class MQTTMonitorClient:
         
         preset_messages = [
             ("開始錄音", "start_audio"), 
+            ("音訊資料", "start_audio_data"),
             ("停止錄音", "stop_audio"), 
             ("錄音狀態", "audio_status")
         ]

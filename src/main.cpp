@@ -21,6 +21,7 @@ void handleConfig(String topic, String value);
 void onMQTTMessage(char *topic, uint8_t *payload, unsigned int length);
 void onMQTTConnect(bool connected);
 void onAudioData(float volume, float *frequencies, int freqCount);
+void onAudioDataChunk(const uint8_t *audioData, size_t dataSize, unsigned long timestamp);
 
 // MQTT 訊息回調函數
 void onMQTTMessage(char *topic, uint8_t *payload, unsigned int length)
@@ -83,9 +84,24 @@ void handleCommand(String command)
             Serial.println("❌ 音訊錄製啟動失敗");
         }
     }
+    else if (command == "start_audio_data")
+    {
+        audioManager.enableAudioDataCollection(true, 2000); // 改為2秒間隔
+        if (audioManager.startRecording())
+        {
+            mqttManager.publish("esp32/response", "音訊資料收集已開始");
+            Serial.println("📊 開始音訊資料收集和錄製 (1秒音訊/2秒間隔)");
+        }
+        else
+        {
+            mqttManager.publish("esp32/response", "音訊資料收集啟動失敗");
+            Serial.println("❌ 音訊資料收集啟動失敗");
+        }
+    }
     else if (command == "stop_audio")
     {
         audioManager.stopRecording();
+        audioManager.enableAudioDataCollection(false);
         mqttManager.publish("esp32/response", "音訊錄製已停止");
         Serial.println("⏹️ 停止音訊錄製");
     }
@@ -93,7 +109,8 @@ void handleCommand(String command)
     {
         audioManager.printStatus();
         String audioStatus = String("Volume: ") + String(audioManager.getCurrentVolume(), 3) +
-                             ", Recording: " + String(audioManager.isRecording() ? "Yes" : "No");
+                             ", Recording: " + String(audioManager.isRecording() ? "Yes" : "No") +
+                             ", DataCollection: " + String(audioManager.isAudioDataCollectionEnabled() ? "Yes" : "No");
         mqttManager.publish("esp32/audio", audioStatus.c_str());
     }
     else if (command == "play_beep")
@@ -285,6 +302,70 @@ void onAudioData(float volume, float *frequencies, int freqCount)
     }
 }
 
+// 音訊資料塊回調函數
+void onAudioDataChunk(const uint8_t *audioData, size_t dataSize, unsigned long timestamp)
+{
+    if (mqttManager.isConnected())
+    {
+        // 使用更小的塊大小和更簡單的傳送方式
+        const size_t maxChunkSize = 512; // 減小到512位元組
+        size_t totalChunks = (dataSize + maxChunkSize - 1) / maxChunkSize;
+        
+        Serial.printf("📦 準備傳送音訊資料: %d 位元組，分成 %d 塊\n", dataSize, totalChunks);
+        
+        // 限制最大塊數，避免網路擁塞
+        if (totalChunks > 50) {
+            Serial.printf("⚠️ 資料塊數過多(%d)，只傳送前50塊\n", totalChunks);
+            totalChunks = 50;
+        }
+        
+        bool allSuccess = true;
+        size_t successCount = 0;
+        
+        for (size_t chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++)
+        {
+            size_t chunkStart = chunkIndex * maxChunkSize;
+            size_t chunkSize = min(maxChunkSize, dataSize - chunkStart);
+            
+            // 簡化主題名稱
+            String topic = "esp32/audio/" + String(timestamp) + "/" + String(chunkIndex);
+            
+            // 嘗試發送
+            bool success = mqttManager.publish(topic.c_str(), audioData + chunkStart, chunkSize);
+            
+            if (success) {
+                successCount++;
+            } else {
+                allSuccess = false;
+                Serial.printf("❌ 塊 %d 發送失敗\n", chunkIndex);
+            }
+            
+            // 在每個塊之間加入小延遲，避免網路擁塞
+            delay(10);
+            
+            // 每10塊檢查一次連接狀態
+            if (chunkIndex % 10 == 0 && chunkIndex > 0) {
+                if (!mqttManager.isConnected()) {
+                    Serial.println("❌ MQTT連接中斷，停止傳送");
+                    break;
+                }
+                delay(50); // 較長延遲給網路緩衝時間
+            }
+        }
+        
+        // 發送完成通知
+        String completeMsg = String(timestamp) + ":" + String(dataSize) + ":" + String(successCount) + ":" + String(totalChunks);
+        mqttManager.publish("esp32/audio/info", completeMsg.c_str());
+        
+        Serial.printf("📤 音訊傳送完成: %d/%d 塊成功 (%s)\n", 
+                      successCount, totalChunks, allSuccess ? "✅ 全部成功" : "⚠️ 部分失敗");
+    }
+    else
+    {
+        Serial.println("⚠️ MQTT 未連接，無法傳送音訊資料");
+    }
+}
+
 // 連接回調函數
 void onMQTTConnect(bool connected)
 {
@@ -345,6 +426,7 @@ void setup()
 
     // 設定音訊回調
     audioManager.setAudioCallback(onAudioData);
+    audioManager.setAudioDataCallback(onAudioDataChunk);
     audioManager.setVolumeThreshold(0.1f); // 設定音量閾值
 
     // 設定喇叭音量
@@ -378,7 +460,7 @@ void setup()
     }
 
     Serial.println("💡 可用指令:");
-    Serial.println("   音訊: start_audio, stop_audio, audio_status");
+    Serial.println("   音訊: start_audio, start_audio_data, stop_audio, audio_status");
     Serial.println("   喇叭: play_beep, play_alarm, play_melody, speaker_status");
     Serial.println("        speaker_enable, speaker_disable");
     Serial.println("   系統: status, ping, restart");

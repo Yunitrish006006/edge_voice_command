@@ -3,17 +3,31 @@
 AudioManager::AudioManager(bool debug)
     : initialized(false), recording(false), debug_enabled(debug),
       audioTaskHandle(nullptr), currentVolume(0.0f), volumeThreshold(0.1f),
-      FFT(vReal, vImag, FFT_SIZE, SAMPLE_RATE)
+      FFT(vReal, vImag, FFT_SIZE, SAMPLE_RATE),
+      audioDataBuffer(nullptr), audioDataIndex(0), lastDataSend(0),
+      dataSendInterval(3000), collectAudioData(false)
 {
     if (debug_enabled)
     {
         Serial.println("[Audio Debug] AudioManager 建構中...");
+    }
+
+    // 分配音訊資料緩衝區
+    audioDataBuffer = (uint8_t *)malloc(AUDIO_CHUNK_SIZE);
+    if (audioDataBuffer == nullptr)
+    {
+        Serial.println("❌ 音訊緩衝區記憶體分配失敗");
     }
 }
 
 AudioManager::~AudioManager()
 {
     end();
+    if (audioDataBuffer)
+    {
+        free(audioDataBuffer);
+        audioDataBuffer = nullptr;
+    }
 }
 
 bool AudioManager::begin()
@@ -122,6 +136,10 @@ bool AudioManager::startRecording()
         return true;
     }
 
+    // 重置音訊資料收集
+    audioDataIndex = 0;
+    lastDataSend = millis();
+
     // 創建音訊處理任務
     BaseType_t result = xTaskCreatePinnedToCore(
         audioTask,
@@ -143,6 +161,10 @@ bool AudioManager::startRecording()
     if (debug_enabled)
     {
         Serial.println("[Audio Debug] 開始錄音和分析");
+        if (collectAudioData)
+        {
+            Serial.printf("[Audio Debug] 音訊資料收集已啟用，間隔: %lu ms\n", dataSendInterval);
+        }
     }
 
     Serial.println("🎙️ 開始音訊錄製");
@@ -201,6 +223,38 @@ void AudioManager::processAudioData(int16_t *audioBuffer, size_t bufferSize)
     // 計算音量
     currentVolume = calculateVolume(audioBuffer, bufferSize);
 
+    // 收集音訊資料（如果啟用）
+    if (collectAudioData && audioDataBuffer != nullptr)
+    {
+        size_t bytesToCopy = bufferSize * sizeof(int16_t);
+
+        // 檢查緩衝區空間
+        if (audioDataIndex + bytesToCopy <= AUDIO_CHUNK_SIZE)
+        {
+            memcpy(audioDataBuffer + audioDataIndex, audioBuffer, bytesToCopy);
+            audioDataIndex += bytesToCopy;
+        }
+
+        // 檢查是否該傳送資料
+        unsigned long now = millis();
+        if (now - lastDataSend >= dataSendInterval && audioDataIndex > 0)
+        {
+            if (audioDataCallback)
+            {
+                audioDataCallback(audioDataBuffer, audioDataIndex, now);
+
+                if (debug_enabled)
+                {
+                    Serial.printf("[Audio Debug] 傳送音訊資料: %d 位元組\n", audioDataIndex);
+                }
+            }
+
+            // 重置緩衝區
+            audioDataIndex = 0;
+            lastDataSend = now;
+        }
+    }
+
     // 詳細診斷輸出
     if (debug_enabled)
     {
@@ -214,6 +268,14 @@ void AudioManager::processAudioData(int16_t *audioBuffer, size_t bufferSize)
             Serial.printf("[Audio] 即時音量: %.3f (閾值: %.3f) %s\n",
                           currentVolume, volumeThreshold,
                           currentVolume > volumeThreshold ? "🔊" : "🔇");
+
+            if (collectAudioData)
+            {
+                Serial.printf("[Audio] 緩衝區使用: %d/%d 位元組 (%.1f%%)\n",
+                              audioDataIndex, AUDIO_CHUNK_SIZE,
+                              (float)audioDataIndex * 100.0 / AUDIO_CHUNK_SIZE);
+            }
+
             lastPrint = now;
         }
 
@@ -246,6 +308,12 @@ void AudioManager::processAudioData(int16_t *audioBuffer, size_t bufferSize)
             Serial.printf("   數值範圍: %d 到 %d\n", minVal, maxVal);
             Serial.printf("   平均振幅: %.2f\n", avgAmplitude);
             Serial.printf("   RMS 音量: %.6f\n", currentVolume);
+
+            if (collectAudioData)
+            {
+                Serial.printf("   音訊收集: %s (間隔: %lu ms)\n",
+                              collectAudioData ? "啟用" : "停用", dataSendInterval);
+            }
 
             if (nonZeroCount == 0)
             {
@@ -333,6 +401,54 @@ void AudioManager::setAudioCallback(AudioCallback callback)
     }
 }
 
+void AudioManager::setAudioDataCallback(AudioDataCallback callback)
+{
+    audioDataCallback = callback;
+    if (debug_enabled)
+    {
+        Serial.println("[Audio Debug] 音訊資料回調函數已設定");
+    }
+}
+
+void AudioManager::enableAudioDataCollection(bool enable, unsigned long intervalMs)
+{
+    collectAudioData = enable;
+    if (enable)
+    {
+        dataSendInterval = intervalMs;
+        audioDataIndex = 0; // 重置緩衝區
+        lastDataSend = millis();
+
+        if (debug_enabled)
+        {
+            Serial.printf("[Audio Debug] 音訊資料收集已啟用，間隔: %lu ms\n", intervalMs);
+        }
+        Serial.printf("📊 音訊資料收集已啟用 (間隔: %lu ms)\n", intervalMs);
+    }
+    else
+    {
+        if (debug_enabled)
+        {
+            Serial.println("[Audio Debug] 音訊資料收集已停用");
+        }
+        Serial.println("📊 音訊資料收集已停用");
+    }
+}
+
+bool AudioManager::isAudioDataCollectionEnabled()
+{
+    return collectAudioData;
+}
+
+void AudioManager::setDataSendInterval(unsigned long intervalMs)
+{
+    dataSendInterval = intervalMs;
+    if (debug_enabled)
+    {
+        Serial.printf("[Audio Debug] 資料傳送間隔設為: %lu ms\n", intervalMs);
+    }
+}
+
 void AudioManager::setDebug(bool enable)
 {
     debug_enabled = enable;
@@ -349,6 +465,12 @@ void AudioManager::printStatus()
     Serial.printf("   錄音中: %s\n", recording ? "是" : "否");
     Serial.printf("   當前音量: %.3f\n", currentVolume);
     Serial.printf("   音量閾值: %.3f\n", volumeThreshold);
+    Serial.printf("   資料收集: %s\n", collectAudioData ? "啟用" : "停用");
+    if (collectAudioData)
+    {
+        Serial.printf("   傳送間隔: %lu ms\n", dataSendInterval);
+        Serial.printf("   緩衝區使用: %d/%d 位元組\n", audioDataIndex, AUDIO_CHUNK_SIZE);
+    }
     Serial.printf("   BCLK: GPIO%d, WS: GPIO%d, DATA: GPIO%d\n",
                   I2S_BCLK_PIN, I2S_WS_PIN, I2S_DATA_PIN);
 }

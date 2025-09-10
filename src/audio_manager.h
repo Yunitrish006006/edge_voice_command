@@ -39,7 +39,18 @@ private:
 
     // 回調函數
     typedef std::function<void(float volume, float *frequencies, int freqCount)> AudioCallback;
+    typedef std::function<void(const uint8_t *audioData, size_t dataSize, unsigned long timestamp)> AudioDataCallback;
     AudioCallback audioCallback;
+    AudioDataCallback audioDataCallback;
+
+    // 音訊資料收集
+    static const size_t AUDIO_BUFFER_SECONDS = 1; // 減少到1秒的音訊
+    static const size_t AUDIO_CHUNK_SIZE = SAMPLE_RATE * AUDIO_BUFFER_SECONDS * sizeof(int16_t);
+    uint8_t *audioDataBuffer;
+    size_t audioDataIndex;
+    unsigned long lastDataSend;
+    unsigned long dataSendInterval;
+    bool collectAudioData;
 
 public:
     AudioManager(bool debug = false);
@@ -62,6 +73,12 @@ public:
 
     // 回調設定
     void setAudioCallback(AudioCallback callback);
+    void setAudioDataCallback(AudioDataCallback callback);
+
+    // 音訊資料收集控制
+    void enableAudioDataCollection(bool enable, unsigned long intervalMs = 3000);
+    bool isAudioDataCollectionEnabled();
+    void setDataSendInterval(unsigned long intervalMs);
 
     // Debug 控制
     void setDebug(bool enable);
