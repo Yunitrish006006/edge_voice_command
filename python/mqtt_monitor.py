@@ -26,6 +26,8 @@ class MQTTMonitorClient:
         # MQTT 設定
         self.config = MQTTConfig()
         self.broker_host, self.broker_port = self.config.get_broker_info()
+        self.mqtt_username = ""
+        self.mqtt_password = ""
         self.mqtt_client = None
         self.connected = False
         self.subscribed_topics = set()
@@ -58,24 +60,83 @@ class MQTTMonitorClient:
                                font=("Arial", 16, "bold"))
         title_label.pack(pady=(0, 10))
         
-        # 連接狀態框架
-        status_frame = ttk.LabelFrame(main_frame, text="連接狀態", padding="5")
-        status_frame.pack(fill=tk.X, pady=(0, 10))
+        # 連接設定框架
+        connection_frame = ttk.LabelFrame(main_frame, text="MQTT Broker 連接設定", padding="5")
+        connection_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # 第一行：Broker 設定
+        broker_config_frame = ttk.Frame(connection_frame)
+        broker_config_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        # Broker IP 設定
+        ttk.Label(broker_config_frame, text="Broker IP:").pack(side=tk.LEFT)
+        self.broker_ip_entry = ttk.Entry(broker_config_frame, width=15)
+        self.broker_ip_entry.pack(side=tk.LEFT, padx=(5, 10))
+        self.broker_ip_entry.insert(0, self.broker_host)
+        
+        # Broker Port 設定
+        ttk.Label(broker_config_frame, text="Port:").pack(side=tk.LEFT)
+        self.broker_port_entry = ttk.Entry(broker_config_frame, width=8)
+        self.broker_port_entry.pack(side=tk.LEFT, padx=(5, 10))
+        self.broker_port_entry.insert(0, str(self.broker_port))
+        
+        # 預設 Broker 按鈕
+        preset_brokers = [
+            ("本機", "192.168.1.121", "1883"),
+            ("本地", "localhost", "1883"),
+            ("HiveMQ", "broker.hivemq.com", "1883")
+        ]
+        for name, host, port in preset_brokers:
+            btn = ttk.Button(broker_config_frame, text=name, width=8,
+                           command=lambda h=host, p=port: self._set_broker(h, p))
+            btn.pack(side=tk.LEFT, padx=(0, 3))
+        
+        # 第二行：認證設定
+        auth_config_frame = ttk.Frame(connection_frame)
+        auth_config_frame.pack(fill=tk.X, pady=(5, 5))
+        
+        # Username 設定
+        ttk.Label(auth_config_frame, text="Username:").pack(side=tk.LEFT)
+        self.username_entry = ttk.Entry(auth_config_frame, width=15)
+        self.username_entry.pack(side=tk.LEFT, padx=(5, 10))
+        
+        # Password 設定
+        ttk.Label(auth_config_frame, text="Password:").pack(side=tk.LEFT)
+        self.password_entry = ttk.Entry(auth_config_frame, width=15, show="*")
+        self.password_entry.pack(side=tk.LEFT, padx=(5, 10))
+        
+        # 認證預設按鈕
+        ttk.Button(auth_config_frame, text="🔓 無認證", width=8,
+                  command=self._clear_auth).pack(side=tk.LEFT, padx=(10, 3))
+        
+        # 第三行：連接狀態和控制
+        status_control_frame = ttk.Frame(connection_frame)
+        status_control_frame.pack(fill=tk.X)
         
         # 狀態指示器
-        self.status_label = ttk.Label(status_frame, text="狀態: 未連接", 
+        self.status_label = ttk.Label(status_control_frame, text="狀態: 未連接", 
                                      foreground="red", font=("Arial", 10, "bold"))
         self.status_label.pack(side=tk.LEFT)
         
-        # 連接按鈕
-        self.connect_btn = ttk.Button(status_frame, text="連接", 
-                                     command=self._toggle_connection)
-        self.connect_btn.pack(side=tk.RIGHT, padx=(10, 0))
+        # 當前服務器顯示
+        self.current_server_label = ttk.Label(status_control_frame, 
+                                             text=f"🌐 當前: {self.broker_host}:{self.broker_port}",
+                                             foreground="blue")
+        self.current_server_label.pack(side=tk.LEFT, padx=(20, 0))
         
-        # 服務器資訊
-        server_label = ttk.Label(status_frame, 
-                                text=f"🌐 服務器: {self.broker_host}:{self.broker_port}")
-        server_label.pack(side=tk.LEFT, padx=(20, 0))
+        # 連接控制按鈕
+        button_frame = ttk.Frame(status_control_frame)
+        button_frame.pack(side=tk.RIGHT)
+        
+        # 應用設定按鈕
+        apply_btn = ttk.Button(button_frame, text="📝 應用設定", 
+                              command=self._apply_broker_settings)
+        apply_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        # 連接按鈕
+        self.connect_btn = ttk.Button(button_frame, text="連接", 
+                                     command=self._toggle_connection)
+        self.connect_btn.pack(side=tk.LEFT)
         
         # 主題管理框架
         topic_frame = ttk.LabelFrame(main_frame, text="主題管理", padding="5")
@@ -376,6 +437,78 @@ class MQTTMonitorClient:
         # 更新集合
         self.subscribed_topics = set(topics)
     
+    def _set_broker(self, host, port):
+        """設定預設 Broker"""
+        self.broker_ip_entry.delete(0, tk.END)
+        self.broker_ip_entry.insert(0, host)
+        self.broker_port_entry.delete(0, tk.END)
+        self.broker_port_entry.insert(0, port)
+    
+    def _clear_auth(self):
+        """清除認證設定"""
+        self.username_entry.delete(0, tk.END)
+        self.password_entry.delete(0, tk.END)
+    
+    def _apply_broker_settings(self):
+        """應用 Broker 設定"""
+        new_host = self.broker_ip_entry.get().strip()
+        new_port_str = self.broker_port_entry.get().strip()
+        new_username = self.username_entry.get().strip()
+        new_password = self.password_entry.get().strip()
+        
+        # 驗證輸入
+        if not new_host:
+            messagebox.showwarning("輸入錯誤", "請輸入 Broker IP 地址")
+            self.broker_ip_entry.focus()
+            return
+        
+        try:
+            new_port = int(new_port_str)
+            if not (1 <= new_port <= 65535):
+                raise ValueError("端口範圍應在 1-65535 之間")
+        except ValueError as e:
+            messagebox.showwarning("輸入錯誤", f"端口格式錯誤: {e}")
+            self.broker_port_entry.focus()
+            return
+        
+        # 檢查是否需要斷開當前連接
+        settings_changed = (new_host != self.broker_host or 
+                          new_port != self.broker_port or
+                          new_username != self.mqtt_username or
+                          new_password != self.mqtt_password)
+        
+        if self.connected and settings_changed:
+            result = messagebox.askyesno("確認", 
+                                       "更改 Broker 設定需要斷開當前連接，是否繼續？")
+            if not result:
+                return
+            
+            # 斷開當前連接
+            self._disconnect()
+            time.sleep(1)  # 等待斷開完成
+        
+        # 更新設定
+        old_host, old_port = self.broker_host, self.broker_port
+        old_username = self.mqtt_username
+        self.broker_host = new_host
+        self.broker_port = new_port
+        self.mqtt_username = new_username
+        self.mqtt_password = new_password
+        
+        # 更新顯示
+        auth_info = f" (認證: {new_username})" if new_username else " (無認證)"
+        self.current_server_label.config(text=f"🌐 當前: {self.broker_host}:{self.broker_port}{auth_info}")
+        
+        # 重新設定 MQTT 客戶端
+        self._setup_mqtt()
+        
+        auth_msg = f"認證用戶: {new_username}" if new_username else "無認證"
+        self._add_message(f"⚙️ Broker 設定已更新: {self.broker_host}:{self.broker_port} ({auth_msg})")
+        
+        if self.debug_mode.get():
+            print(f"[DEBUG] Broker 設定更新: {old_host}:{old_port} -> {new_host}:{new_port}")
+            print(f"[DEBUG] 認證設定更新: {old_username} -> {new_username}")
+    
     def _toggle_connection(self):
         """切換連接狀態"""
         if self.connected:
@@ -388,6 +521,15 @@ class MQTTMonitorClient:
         try:
             if self.debug_mode.get():
                 print(f"[DEBUG] 嘗試連接到 {self.broker_host}:{self.broker_port}")
+                if self.mqtt_username:
+                    print(f"[DEBUG] 使用認證用戶: {self.mqtt_username}")
+            
+            # 設定認證（如果有提供）
+            if self.mqtt_username:
+                self.mqtt_client.username_pw_set(self.mqtt_username, self.mqtt_password)
+                auth_info = f" (用戶: {self.mqtt_username})"
+            else:
+                auth_info = " (無認證)"
             
             self.mqtt_client.connect(
                 self.broker_host, 
@@ -396,7 +538,7 @@ class MQTTMonitorClient:
             )
             self.mqtt_client.loop_start()
             
-            self._add_message("🔗 正在連接...")
+            self._add_message(f"🔗 正在連接{auth_info}...")
             
         except Exception as e:
             messagebox.showerror("連接錯誤", f"無法連接到 MQTT Broker: {e}")
