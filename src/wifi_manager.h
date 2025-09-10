@@ -8,9 +8,10 @@ class WiFiManager
 private:
     const char *ssid;
     const char *password;
+    bool debug_enabled;
 
 public:
-    WiFiManager(const char *ssid, const char *password);
+    WiFiManager(const char *ssid, const char *password, bool debug = false);
     bool connect();
     bool isConnected();
     void reconnect();
@@ -18,6 +19,7 @@ public:
     String getIP();
     int getRSSI();
     String getMAC();
+    void setDebug(bool enable);
 };
 
 #endif

@@ -43,6 +43,7 @@ private:
 
     // 配置
     MQTTConfig config;
+    bool debug_enabled;
 
     // 狀態管理
     MQTTConnectionState connectionState;
@@ -61,7 +62,7 @@ private:
 
 public:
     // 構造函數
-    MQTTManager(const MQTTConfig &cfg);
+    MQTTManager(const MQTTConfig &cfg, bool debug = false);
 
     // 基本 MQTT 操作
     bool begin();
@@ -92,6 +93,7 @@ public:
     // 診斷功能
     void printStatus();
     int getLastError();
+    void setDebug(bool enable);
 };
 
 #endif // MQTT_MANAGER_H

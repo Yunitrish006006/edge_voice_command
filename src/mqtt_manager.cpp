@@ -3,8 +3,8 @@
 // 靜態成員初始化
 MQTTManager *MQTTManager::instance = nullptr;
 
-MQTTManager::MQTTManager(const MQTTConfig &cfg)
-    : config(cfg), mqttClient(wifiClient), connectionState(MQTTConnectionState::DISCONNECTED),
+MQTTManager::MQTTManager(const MQTTConfig &cfg, bool debug)
+    : config(cfg), debug_enabled(debug), mqttClient(wifiClient), connectionState(MQTTConnectionState::DISCONNECTED),
       lastConnectionAttempt(0), reconnectInterval(5000), autoReconnect(true)
 {
 
@@ -20,6 +20,21 @@ bool MQTTManager::begin()
     // 設定 MQTT 伺服器
     mqttClient.setServer(config.server, config.port);
 
+    if (debug_enabled)
+    {
+        Serial.println("[MQTT Debug] MQTT Manager 初始化中...");
+        Serial.printf("[MQTT Debug] 伺服器: %s:%d\n", config.server, config.port);
+        Serial.printf("[MQTT Debug] 客戶端ID: %s\n", config.clientId);
+        if (config.useCredentials)
+        {
+            Serial.printf("[MQTT Debug] 使用認證: %s\n", config.username);
+        }
+        else
+        {
+            Serial.println("[MQTT Debug] 無認證設定");
+        }
+    }
+
     Serial.println("📡 MQTT Manager 已初始化");
     Serial.printf("   伺服器: %s:%d\n", config.server, config.port);
     Serial.printf("   客戶端ID: %s\n", config.clientId);
@@ -31,11 +46,22 @@ bool MQTTManager::connect()
 {
     if (connectionState == MQTTConnectionState::CONNECTING)
     {
+        if (debug_enabled)
+        {
+            Serial.println("[MQTT Debug] 已在連接中，跳過");
+        }
         return false; // 已在連接中
     }
 
     connectionState = MQTTConnectionState::CONNECTING;
     lastConnectionAttempt = millis();
+
+    if (debug_enabled)
+    {
+        Serial.println("[MQTT Debug] 開始連接到 MQTT Broker...");
+        Serial.printf("[MQTT Debug] 目標: %s:%d\n", config.server, config.port);
+        Serial.printf("[MQTT Debug] 客戶端ID: %s\n", config.clientId);
+    }
 
     Serial.print("🔗 正在連接 MQTT Broker...");
 
@@ -43,10 +69,18 @@ bool MQTTManager::connect()
 
     if (config.useCredentials)
     {
+        if (debug_enabled)
+        {
+            Serial.printf("[MQTT Debug] 使用認證連接: %s\n", config.username);
+        }
         connected = mqttClient.connect(config.clientId, config.username, config.password);
     }
     else
     {
+        if (debug_enabled)
+        {
+            Serial.println("[MQTT Debug] 使用無認證連接");
+        }
         connected = mqttClient.connect(config.clientId);
     }
 
@@ -54,6 +88,11 @@ bool MQTTManager::connect()
     {
         connectionState = MQTTConnectionState::CONNECTED;
         Serial.println(" ✅ 連接成功!");
+
+        if (debug_enabled)
+        {
+            Serial.println("[MQTT Debug] MQTT 連接已建立");
+        }
 
         // 調用連接回調
         if (connectionCallback)
@@ -66,7 +105,46 @@ bool MQTTManager::connect()
     else
     {
         connectionState = MQTTConnectionState::CONNECTION_FAILED;
-        Serial.printf(" ❌ 連接失敗，錯誤代碼: %d\n", mqttClient.state());
+        int errorCode = mqttClient.state();
+        Serial.printf(" ❌ 連接失敗，錯誤代碼: %d\n", errorCode);
+
+        if (debug_enabled)
+        {
+            Serial.printf("[MQTT Debug] 連接失敗詳細錯誤: %d\n", errorCode);
+            switch (errorCode)
+            {
+            case -4:
+                Serial.println("[MQTT Debug] 錯誤: 伺服器無回應");
+                break;
+            case -3:
+                Serial.println("[MQTT Debug] 錯誤: 網絡連接失敗");
+                break;
+            case -2:
+                Serial.println("[MQTT Debug] 錯誤: 網絡連接失敗");
+                break;
+            case -1:
+                Serial.println("[MQTT Debug] 錯誤: 客戶端斷開");
+                break;
+            case 1:
+                Serial.println("[MQTT Debug] 錯誤: 協議版本不支援");
+                break;
+            case 2:
+                Serial.println("[MQTT Debug] 錯誤: 客戶端ID被拒絕");
+                break;
+            case 3:
+                Serial.println("[MQTT Debug] 錯誤: 伺服器不可用");
+                break;
+            case 4:
+                Serial.println("[MQTT Debug] 錯誤: 認證失敗");
+                break;
+            case 5:
+                Serial.println("[MQTT Debug] 錯誤: 未授權");
+                break;
+            default:
+                Serial.printf("[MQTT Debug] 錯誤: 未知錯誤 (%d)\n", errorCode);
+                break;
+            }
+        }
 
         // 調用連接回調
         if (connectionCallback)
@@ -297,6 +375,15 @@ void MQTTManager::printStatus()
 int MQTTManager::getLastError()
 {
     return mqttClient.state();
+}
+
+void MQTTManager::setDebug(bool enable)
+{
+    debug_enabled = enable;
+    if (debug_enabled)
+    {
+        Serial.println("[MQTT Debug] MQTT 除錯模式已啟用");
+    }
 }
 
 // 靜態回調函數
