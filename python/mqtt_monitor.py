@@ -157,7 +157,13 @@ class MQTTMonitorClient:
         preset_frame = ttk.Frame(topic_frame)
         preset_frame.pack(side=tk.LEFT, padx=(10, 0))
         
-        presets = [("ESP32", "esp32/+"), ("測試", "test/+"), ("全部", "#")]
+        presets = [
+            ("ESP32", "esp32/+"), 
+            ("測試", "test/+"), 
+            ("HA全部", "homeassistant/#"),
+            ("HA氣候", "homeassistant/climate/+"),
+            ("全部", "#")
+        ]
         for name, topic in presets:
             btn = ttk.Button(preset_frame, text=name, width=8,
                            command=lambda t=topic: self._quick_subscribe(t))
