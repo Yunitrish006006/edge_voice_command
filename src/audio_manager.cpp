@@ -209,10 +209,20 @@ void AudioManager::processAudioData(int16_t *audioBuffer, size_t bufferSize)
         audioCallback(currentVolume, frequencies, 10);
     }
 
-    // Debug 輸出
-    if (debug_enabled && currentVolume > volumeThreshold)
+    // Debug 輸出 - 持續顯示音量
+    if (debug_enabled)
     {
-        Serial.printf("[Audio Debug] 音量: %.3f (閾值: %.3f)\n", currentVolume, volumeThreshold);
+        static unsigned long lastPrint = 0;
+        unsigned long now = millis();
+
+        // 每100ms輸出一次音量
+        if (now - lastPrint > 100)
+        {
+            Serial.printf("[Audio] 即時音量: %.3f (閾值: %.3f) %s\n",
+                          currentVolume, volumeThreshold,
+                          currentVolume > volumeThreshold ? "🔊" : "🔇");
+            lastPrint = now;
+        }
     }
 }
 

@@ -240,7 +240,19 @@ void setup()
         mqttManager.connect();
     }
 
-    Serial.println("🎧 系統就緒，等待語音指令...");
+    Serial.println("🎧 系統就緒，開始音訊監控...");
+
+    // 自動開始音訊錄製以顯示即時音量
+    if (audioManager.startRecording())
+    {
+        Serial.println("🎙️ 音訊監控已自動啟動");
+        Serial.println("💡 音量將持續顯示在序列埠輸出");
+    }
+    else
+    {
+        Serial.println("❌ 音訊監控啟動失敗");
+    }
+
     Serial.println("💡 可用指令: start_audio, stop_audio, audio_status, status, ping");
 }
 
