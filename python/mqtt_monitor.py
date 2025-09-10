@@ -82,7 +82,7 @@ class MQTTMonitorClient:
         
         # 預設 Broker 按鈕
         preset_brokers = [
-            ("本機", "192.168.1.121", "1883"),
+            ("本機", "192.168.98.106", "1883"),
             ("本地", "localhost", "1883"),
             ("HiveMQ", "broker.hivemq.com", "1883")
         ]

@@ -4,12 +4,12 @@
 #include "speaker_manager.h"
 
 // MQTT 設定
-const char *mqtt_server = "192.168.1.121";
+const char *mqtt_server = "192.168.98.106";
 const int mqtt_port = 1883;
 const char *client_id = "ESP32_Voice_Command";
 
 // 創建管理器實例
-WiFiManager wifiManager("CTC_Deco", "53537826");
+WiFiManager wifiManager("YUNROG", "0937565253");
 MQTTConfig mqttConfig(mqtt_server, mqtt_port, client_id);
 MQTTManager mqttManager(mqttConfig, false); // 關閉MQTT debug減少輸出
 AudioManager audioManager(false);           // 關閉音訊debug
