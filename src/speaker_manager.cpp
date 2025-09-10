@@ -1,8 +1,8 @@
 #include "speaker_manager.h"
 
 SpeakerManager::SpeakerManager(bool debug)
-    : initialized(false), playing(false), debug_enabled(debug),
-      speakerTaskHandle(nullptr), volume(0.5f), frequency(1000.0f), duration(200)
+    : initialized(false), playing(false), debug_enabled(debug), taskShouldStop(false),
+      speakerTaskHandle(nullptr), volume(0.5f), frequency(1000.0f), duration(200), playStartTime(0)
 {
     if (debug_enabled)
     {
@@ -133,10 +133,14 @@ bool SpeakerManager::startPlaying()
     {
         if (debug_enabled)
         {
-            Serial.println("[Speaker Debug] 喇叭已在播放中");
+            Serial.println("[Speaker Debug] 喇叭已在播放中，停止舊任務");
         }
-        return true;
+        stopPlaying();
     }
+
+    // 重置控制變數
+    taskShouldStop = false;
+    playStartTime = millis();
 
     // 創建喇叭播放任務
     BaseType_t result = xTaskCreatePinnedToCore(
@@ -171,12 +175,25 @@ void SpeakerManager::stopPlaying()
     if (!playing)
         return;
 
+    // 通知任務停止
+    taskShouldStop = true;
     playing = false;
 
+    // 等待任務自然結束
     if (speakerTaskHandle != nullptr)
     {
-        vTaskDelete(speakerTaskHandle);
-        speakerTaskHandle = nullptr;
+        // 等待最多500ms讓任務自己結束
+        for (int i = 0; i < 50 && speakerTaskHandle != nullptr; i++)
+        {
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+
+        // 如果任務還沒結束，強制刪除
+        if (speakerTaskHandle != nullptr)
+        {
+            vTaskDelete(speakerTaskHandle);
+            speakerTaskHandle = nullptr;
+        }
     }
 
     if (debug_enabled)
@@ -195,8 +212,22 @@ void SpeakerManager::speakerTask(void *parameter)
 
     const TickType_t xDelay = pdMS_TO_TICKS(10); // 10ms 延遲
 
-    while (speakerManager->playing)
+    while (speakerManager->playing && !speakerManager->taskShouldStop)
     {
+        // 檢查播放時間限制
+        if (speakerManager->duration > 0)
+        {
+            unsigned long elapsed = millis() - speakerManager->playStartTime;
+            if (elapsed >= (unsigned long)speakerManager->duration)
+            {
+                if (speakerManager->debug_enabled)
+                {
+                    Serial.println("[Speaker Debug] 播放時間到，任務自動結束");
+                }
+                break;
+            }
+        }
+
         // 生成音訊數據
         speakerManager->generateTone(audioBuffer, BUFFER_SIZE,
                                      speakerManager->frequency,
@@ -205,7 +236,7 @@ void SpeakerManager::speakerTask(void *parameter)
         // 寫入 I2S 數據
         esp_err_t result = i2s_write(I2S_PORT, audioBuffer,
                                      sizeof(audioBuffer),
-                                     &bytesWritten, portMAX_DELAY);
+                                     &bytesWritten, pdMS_TO_TICKS(100)); // 100ms 超時
 
         if (result != ESP_OK)
         {
@@ -216,7 +247,16 @@ void SpeakerManager::speakerTask(void *parameter)
         vTaskDelay(xDelay);
     }
 
-    vTaskDelete(NULL);
+    // 任務結束，清理狀態
+    speakerManager->playing = false;
+    speakerManager->speakerTaskHandle = nullptr;
+
+    if (speakerManager->debug_enabled)
+    {
+        Serial.println("[Speaker Debug] 喇叭任務自然結束");
+    }
+
+    vTaskDelete(NULL); // 自己刪除自己
 }
 
 void SpeakerManager::generateTone(int16_t *buffer, size_t samples, float freq, float vol)
@@ -275,9 +315,15 @@ bool SpeakerManager::playTone(float freq, int duration_ms)
     if (!startPlaying())
         return false;
 
-    // 播放指定時間後停止
-    delay(duration_ms);
-    stopPlaying();
+    // 等待播放完成 (不使用delay，避免阻塞)
+    if (duration_ms > 0)
+    {
+        unsigned long startTime = millis();
+        while (playing && (millis() - startTime) < (unsigned long)duration_ms + 100) // 多等100ms確保完成
+        {
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+    }
 
     return true;
 }

@@ -377,16 +377,12 @@ void setup()
         Serial.println("❌ 音訊監控啟動失敗");
     }
 
-    // 播放啟動音效
-    speakerManager.playBeep(200);
-    delay(100);
-    speakerManager.playBeep(200);
-
     Serial.println("💡 可用指令:");
     Serial.println("   音訊: start_audio, stop_audio, audio_status");
     Serial.println("   喇叭: play_beep, play_alarm, play_melody, speaker_status");
     Serial.println("        speaker_enable, speaker_disable");
     Serial.println("   系統: status, ping, restart");
+    Serial.println("🎵 系統就緒，使用 MQTT 指令測試喇叭功能");
 }
 
 void loop()

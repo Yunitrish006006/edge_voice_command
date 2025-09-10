@@ -27,12 +27,14 @@ private:
     bool initialized;
     bool playing;
     bool debug_enabled;
+    bool taskShouldStop;
     TaskHandle_t speakerTaskHandle;
 
     // 音訊參數
     float volume;
     float frequency;
     int duration;
+    unsigned long playStartTime;
 
     // 音訊生成
     void generateTone(int16_t *buffer, size_t samples, float freq, float vol);
