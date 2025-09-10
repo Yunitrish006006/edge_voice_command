@@ -102,14 +102,51 @@ class MQTTMonitorClient:
                            command=lambda t=topic: self._quick_subscribe(t))
             btn.pack(side=tk.LEFT, padx=(0, 5))
         
-        # 已訂閱主題顯示
-        subscribed_frame = ttk.Frame(main_frame)
+        # 已訂閱主題管理區域
+        subscribed_frame = ttk.LabelFrame(main_frame, text="已訂閱主題管理", padding="5")
         subscribed_frame.pack(fill=tk.X, pady=(0, 10))
         
-        ttk.Label(subscribed_frame, text="已訂閱主題:").pack(side=tk.LEFT)
-        self.subscribed_label = ttk.Label(subscribed_frame, text="無", 
-                                         foreground="gray")
-        self.subscribed_label.pack(side=tk.LEFT, padx=(10, 0))
+        # 主題列表框架
+        topics_list_frame = ttk.Frame(subscribed_frame)
+        topics_list_frame.pack(fill=tk.X)
+        
+        # 主題列表 (使用 Listbox)
+        list_frame = ttk.Frame(topics_list_frame)
+        list_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        ttk.Label(list_frame, text="已訂閱主題:").pack(anchor=tk.W)
+        
+        # 創建帶滾動條的列表框
+        listbox_frame = ttk.Frame(list_frame)
+        listbox_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
+        
+        self.topics_listbox = tk.Listbox(listbox_frame, height=4, 
+                                        font=("Consolas", 9))
+        scrollbar_topics = ttk.Scrollbar(listbox_frame, orient=tk.VERTICAL, 
+                                        command=self.topics_listbox.yview)
+        self.topics_listbox.configure(yscrollcommand=scrollbar_topics.set)
+        
+        self.topics_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar_topics.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # 主題管理按鈕框架
+        buttons_frame = ttk.Frame(topics_list_frame)
+        buttons_frame.pack(side=tk.RIGHT, padx=(10, 0), fill=tk.Y)
+        
+        # 取消訂閱按鈕
+        unsubscribe_btn = ttk.Button(buttons_frame, text="🗑️ 取消訂閱", 
+                                    command=self._unsubscribe_selected)
+        unsubscribe_btn.pack(pady=(0, 5), fill=tk.X)
+        
+        # 清空所有訂閱按鈕
+        clear_all_btn = ttk.Button(buttons_frame, text="🧹 清空全部", 
+                                  command=self._unsubscribe_all)
+        clear_all_btn.pack(pady=(0, 5), fill=tk.X)
+        
+        # 重新訂閱按鈕
+        resubscribe_btn = ttk.Button(buttons_frame, text="🔄 重新訂閱", 
+                                    command=self._resubscribe_selected)
+        resubscribe_btn.pack(fill=tk.X)
         
         # 訊息顯示區域
         message_frame = ttk.LabelFrame(main_frame, text="MQTT 訊息", padding="5")
@@ -328,12 +365,16 @@ class MQTTMonitorClient:
                 self.message_text.insert("1.0", new_content)
     
     def _update_subscribed_topics(self, topics):
-        """更新已訂閱主題顯示"""
-        if topics:
-            topics_text = ", ".join(topics)
-            self.subscribed_label.config(text=topics_text, foreground="blue")
-        else:
-            self.subscribed_label.config(text="無", foreground="gray")
+        """更新已訂閱主題列表"""
+        # 清空列表框
+        self.topics_listbox.delete(0, tk.END)
+        
+        # 添加所有主題
+        for topic in topics:
+            self.topics_listbox.insert(tk.END, topic)
+        
+        # 更新集合
+        self.subscribed_topics = set(topics)
     
     def _toggle_connection(self):
         """切換連接狀態"""
@@ -399,6 +440,88 @@ class MQTTMonitorClient:
                 
         except Exception as e:
             messagebox.showerror("訂閱錯誤", f"無法訂閱主題: {e}")
+    
+    def _unsubscribe_selected(self):
+        """取消訂閱選中的主題"""
+        selection = self.topics_listbox.curselection()
+        if not selection:
+            messagebox.showwarning("選擇錯誤", "請先選擇要取消訂閱的主題")
+            return
+        
+        if not self.connected:
+            messagebox.showwarning("連接錯誤", "請先連接到 MQTT Broker")
+            return
+        
+        # 獲取選中的主題
+        selected_topic = self.topics_listbox.get(selection[0])
+        
+        try:
+            # 取消訂閱
+            self.mqtt_client.unsubscribe(selected_topic)
+            
+            # 從集合中移除
+            if selected_topic in self.subscribed_topics:
+                self.subscribed_topics.remove(selected_topic)
+            
+            # 更新顯示
+            self.message_queue.put(("topics", list(self.subscribed_topics)))
+            self._add_message(f"🚫 已取消訂閱: {selected_topic}")
+            
+            if self.debug_mode.get():
+                print(f"[DEBUG] 取消訂閱主題: {selected_topic}")
+                
+        except Exception as e:
+            messagebox.showerror("取消訂閱錯誤", f"無法取消訂閱主題: {e}")
+    
+    def _unsubscribe_all(self):
+        """取消所有訂閱"""
+        if not self.subscribed_topics:
+            messagebox.showinfo("提示", "目前沒有訂閱任何主題")
+            return
+        
+        if not self.connected:
+            messagebox.showwarning("連接錯誤", "請先連接到 MQTT Broker")
+            return
+        
+        # 確認對話框
+        result = messagebox.askyesno("確認", "確定要取消所有主題的訂閱嗎？")
+        if not result:
+            return
+        
+        try:
+            # 取消所有訂閱
+            for topic in list(self.subscribed_topics):
+                self.mqtt_client.unsubscribe(topic)
+            
+            # 清空集合
+            self.subscribed_topics.clear()
+            
+            # 更新顯示
+            self.message_queue.put(("topics", []))
+            self._add_message("🧹 已取消所有主題訂閱")
+            
+            if self.debug_mode.get():
+                print("[DEBUG] 已取消所有主題訂閱")
+                
+        except Exception as e:
+            messagebox.showerror("取消訂閱錯誤", f"取消訂閱時發生錯誤: {e}")
+    
+    def _resubscribe_selected(self):
+        """重新訂閱選中的主題"""
+        selection = self.topics_listbox.curselection()
+        if not selection:
+            messagebox.showwarning("選擇錯誤", "請先選擇要重新訂閱的主題")
+            return
+        
+        if not self.connected:
+            messagebox.showwarning("連接錯誤", "請先連接到 MQTT Broker")
+            return
+        
+        # 獲取選中的主題
+        selected_topic = self.topics_listbox.get(selection[0])
+        
+        # 重新訂閱
+        self._subscribe_to_topic(selected_topic)
     
     def _add_message(self, message):
         """添加系統訊息"""
