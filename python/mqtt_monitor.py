@@ -21,10 +21,15 @@ class MQTTMonitorClient:
         # 主視窗
         self.root = tk.Tk()
         self.root.title("🔍 MQTT 訊息監控器")
-        self.root.geometry("900x700")
+        self.config = MQTTConfig()
+        
+        # 從配置檔讀取視窗大小
+        gui_config = self.config.get_gui_config()
+        window_width = gui_config['window_width']
+        window_height = gui_config['window_height']
+        self.root.geometry(f"{window_width}x{window_height}")
         
         # MQTT 設定
-        self.config = MQTTConfig()
         self.broker_host, self.broker_port = self.config.get_broker_info()
         self.mqtt_username = ""
         self.mqtt_password = ""
@@ -146,7 +151,6 @@ class MQTTMonitorClient:
         ttk.Label(topic_frame, text="訂閱主題:").pack(side=tk.LEFT)
         self.topic_entry = ttk.Entry(topic_frame, width=30)
         self.topic_entry.pack(side=tk.LEFT, padx=(5, 5))
-        self.topic_entry.insert(0, "esp32/+")
         
         # 訂閱按鈕
         subscribe_btn = ttk.Button(topic_frame, text="訂閱", 
@@ -158,10 +162,7 @@ class MQTTMonitorClient:
         preset_frame.pack(side=tk.LEFT, padx=(10, 0))
         
         presets = [
-            ("ESP32", "esp32/+"), 
-            ("測試", "test/+"), 
-            ("HA全部", "homeassistant/#"),
-            ("HA氣候", "homeassistant/climate/+"),
+            ("ESP32", "esp32/#"),
             ("全部", "#")
         ]
         for name, topic in presets:
@@ -242,7 +243,7 @@ class MQTTMonitorClient:
         self.send_topic_entry.insert(0, "esp32/command")
         
         # 快速主題按鈕
-        quick_topics = [("命令", "esp32/command"), ("控制", "esp32/control"), ("測試", "test/message")]
+        quick_topics = [("命令", "esp32/command")]
         for name, topic in quick_topics:
             btn = ttk.Button(topic_send_frame, text=name, width=8,
                            command=lambda t=topic: self._set_send_topic(t))
@@ -283,10 +284,9 @@ class MQTTMonitorClient:
         preset_msg_frame.pack(side=tk.RIGHT)
         
         preset_messages = [
-            ("開燈", "LED_ON"), 
-            ("關燈", "LED_OFF"), 
-            ("重啟", "RESTART"),
-            ("狀態", "GET_STATUS")
+            ("開始錄音", "start_audio"), 
+            ("停止錄音", "stop_audio"), 
+            ("錄音狀態", "audio_status")
         ]
         for name, msg in preset_messages:
             btn = ttk.Button(preset_msg_frame, text=name, width=8,

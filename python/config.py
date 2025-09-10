@@ -22,7 +22,7 @@ class MQTTConfig:
     def create_default_config(self):
         """創建預設配置"""
         self.config['broker'] = {
-            'custom_host': '192.168.1.121',
+            'custom_host': '192.168.98.106',
             'custom_port': '1883',
             'external_host': 'broker.hivemq.com',
             'external_port': '1883',
@@ -44,7 +44,7 @@ class MQTTConfig:
         
         self.config['gui'] = {
             'window_width': '900',
-            'window_height': '650',
+            'window_height': '1300',
             'auto_scroll': 'true',
             'max_log_lines': '1000'
         }
@@ -90,7 +90,7 @@ class MQTTConfig:
         """取得 GUI 配置"""
         return {
             'window_width': self.config.getint('gui', 'window_width', fallback=900),
-            'window_height': self.config.getint('gui', 'window_height', fallback=650),
+            'window_height': self.config.getint('gui', 'window_height', fallback=1300),
             'auto_scroll': self.config.getboolean('gui', 'auto_scroll', fallback=True),
             'max_log_lines': self.config.getint('gui', 'max_log_lines', fallback=1000)
         }
