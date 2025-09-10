@@ -32,6 +32,21 @@
 				"$platformio"
 			],
 			"group": "build"
+		},
+		{
+			"label": "PlatformIO Upload",
+			"type": "shell",
+			"command": "pio",
+			"args": [
+				"run",
+				"-t",
+				"upload"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$platformio"
+			],
+			"group": "build"
 		}
 	]
 }
