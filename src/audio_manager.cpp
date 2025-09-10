@@ -201,18 +201,11 @@ void AudioManager::processAudioData(int16_t *audioBuffer, size_t bufferSize)
     // 計算音量
     currentVolume = calculateVolume(audioBuffer, bufferSize);
 
-    // 如果有設定回調函數，執行頻率分析
-    if (audioCallback && currentVolume > volumeThreshold)
-    {
-        float frequencies[10]; // 前10個主要頻率
-        performFFT(audioBuffer, bufferSize, frequencies, 10);
-        audioCallback(currentVolume, frequencies, 10);
-    }
-
-    // Debug 輸出 - 持續顯示音量
+    // 詳細診斷輸出
     if (debug_enabled)
     {
         static unsigned long lastPrint = 0;
+        static unsigned long lastDetailPrint = 0;
         unsigned long now = millis();
 
         // 每100ms輸出一次音量
@@ -223,9 +216,62 @@ void AudioManager::processAudioData(int16_t *audioBuffer, size_t bufferSize)
                           currentVolume > volumeThreshold ? "🔊" : "🔇");
             lastPrint = now;
         }
+
+        // 每2秒輸出詳細診斷資訊
+        if (now - lastDetailPrint > 2000)
+        {
+            // 計算原始數據統計
+            int16_t minVal = 32767, maxVal = -32768;
+            long sum = 0;
+            int nonZeroCount = 0;
+
+            for (size_t i = 0; i < bufferSize; i++)
+            {
+                int16_t sample = audioBuffer[i];
+                if (sample != 0)
+                    nonZeroCount++;
+                if (sample < minVal)
+                    minVal = sample;
+                if (sample > maxVal)
+                    maxVal = sample;
+                sum += abs(sample);
+            }
+
+            float avgAmplitude = (float)sum / bufferSize;
+
+            Serial.println("🔬 麥克風診斷報告:");
+            Serial.printf("   緩衝區大小: %d 樣本\n", bufferSize);
+            Serial.printf("   非零樣本: %d/%d (%.1f%%)\n", nonZeroCount, bufferSize,
+                          (float)nonZeroCount * 100.0 / bufferSize);
+            Serial.printf("   數值範圍: %d 到 %d\n", minVal, maxVal);
+            Serial.printf("   平均振幅: %.2f\n", avgAmplitude);
+            Serial.printf("   RMS 音量: %.6f\n", currentVolume);
+
+            if (nonZeroCount == 0)
+            {
+                Serial.println("⚠️  警告: 所有音訊樣本都是0 - 可能的問題:");
+                Serial.println("   1. 麥克風未正確連接");
+                Serial.println("   2. 電源供應問題");
+                Serial.println("   3. GPIO引腳配置錯誤");
+                Serial.println("   4. 麥克風故障");
+            }
+            else if (avgAmplitude < 10)
+            {
+                Serial.println("ℹ️  偵測到微弱信號 - 麥克風可能正常但環境很安靜");
+            }
+
+            lastDetailPrint = now;
+        }
+    }
+
+    // 如果有設定回調函數，執行頻率分析
+    if (audioCallback && currentVolume > volumeThreshold)
+    {
+        float frequencies[10]; // 前10個主要頻率
+        performFFT(audioBuffer, bufferSize, frequencies, 10);
+        audioCallback(currentVolume, frequencies, 10);
     }
 }
-
 float AudioManager::calculateVolume(int16_t *audioBuffer, size_t bufferSize)
 {
     float sum = 0.0f;

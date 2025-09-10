@@ -11,7 +11,7 @@ const char *client_id = "ESP32_Voice_Command";
 WiFiManager wifiManager("CTC_Deco", "53537826");
 MQTTConfig mqttConfig(mqtt_server, mqtt_port, client_id);
 MQTTManager mqttManager(mqttConfig, false); // 關閉MQTT debug減少輸出
-AudioManager audioManager(true);            // 啟用音訊debug
+AudioManager audioManager(false);           // 啟用音訊debug
 
 // 函數聲明
 void handleCommand(String command);
