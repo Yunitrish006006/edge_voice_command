@@ -310,54 +310,60 @@ void onAudioDataChunk(const uint8_t *audioData, size_t dataSize, unsigned long t
         // 使用更小的塊大小和更簡單的傳送方式
         const size_t maxChunkSize = 512; // 減小到512位元組
         size_t totalChunks = (dataSize + maxChunkSize - 1) / maxChunkSize;
-        
+
         Serial.printf("📦 準備傳送音訊資料: %d 位元組，分成 %d 塊\n", dataSize, totalChunks);
-        
+
         // 限制最大塊數，避免網路擁塞
-        if (totalChunks > 50) {
+        if (totalChunks > 50)
+        {
             Serial.printf("⚠️ 資料塊數過多(%d)，只傳送前50塊\n", totalChunks);
             totalChunks = 50;
         }
-        
+
         bool allSuccess = true;
         size_t successCount = 0;
-        
+
         for (size_t chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++)
         {
             size_t chunkStart = chunkIndex * maxChunkSize;
             size_t chunkSize = min(maxChunkSize, dataSize - chunkStart);
-            
+
             // 簡化主題名稱
             String topic = "esp32/audio/" + String(timestamp) + "/" + String(chunkIndex);
-            
+
             // 嘗試發送
             bool success = mqttManager.publish(topic.c_str(), audioData + chunkStart, chunkSize);
-            
-            if (success) {
+
+            if (success)
+            {
                 successCount++;
-            } else {
+            }
+            else
+            {
                 allSuccess = false;
                 Serial.printf("❌ 塊 %d 發送失敗\n", chunkIndex);
             }
-            
+
             // 在每個塊之間加入小延遲，避免網路擁塞
             delay(10);
-            
+
             // 每10塊檢查一次連接狀態
-            if (chunkIndex % 10 == 0 && chunkIndex > 0) {
-                if (!mqttManager.isConnected()) {
+            if (chunkIndex % 10 == 0 && chunkIndex > 0)
+            {
+                if (!mqttManager.isConnected())
+                {
                     Serial.println("❌ MQTT連接中斷，停止傳送");
                     break;
                 }
                 delay(50); // 較長延遲給網路緩衝時間
             }
         }
-        
+
         // 發送完成通知
         String completeMsg = String(timestamp) + ":" + String(dataSize) + ":" + String(successCount) + ":" + String(totalChunks);
         mqttManager.publish("esp32/audio/info", completeMsg.c_str());
-        
-        Serial.printf("📤 音訊傳送完成: %d/%d 塊成功 (%s)\n", 
+
+        Serial.printf("📤 音訊傳送完成: %d/%d 塊成功 (%s)\n",
                       successCount, totalChunks, allSuccess ? "✅ 全部成功" : "⚠️ 部分失敗");
     }
     else
