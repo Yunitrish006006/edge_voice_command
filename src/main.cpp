@@ -1,6 +1,7 @@
 #include "wifi_manager.h"
 #include "mqtt_manager.h"
 #include "audio_manager.h"
+#include "speaker_manager.h"
 
 // MQTT 設定
 const char *mqtt_server = "192.168.1.121";
@@ -11,7 +12,8 @@ const char *client_id = "ESP32_Voice_Command";
 WiFiManager wifiManager("CTC_Deco", "53537826");
 MQTTConfig mqttConfig(mqtt_server, mqtt_port, client_id);
 MQTTManager mqttManager(mqttConfig, false); // 關閉MQTT debug減少輸出
-AudioManager audioManager(false);           // 啟用音訊debug
+AudioManager audioManager(false);           // 關閉音訊debug
+SpeakerManager speakerManager(true);        // 啟用喇叭debug
 
 // 函數聲明
 void handleCommand(String command);
@@ -94,6 +96,68 @@ void handleCommand(String command)
                              ", Recording: " + String(audioManager.isRecording() ? "Yes" : "No");
         mqttManager.publish("esp32/audio", audioStatus.c_str());
     }
+    else if (command == "play_beep")
+    {
+        if (speakerManager.playBeep(500))
+        {
+            mqttManager.publish("esp32/response", "播放嗶聲");
+            Serial.println("🔊 播放嗶聲");
+        }
+        else
+        {
+            mqttManager.publish("esp32/response", "嗶聲播放失敗");
+            Serial.println("❌ 嗶聲播放失敗");
+        }
+    }
+    else if (command == "play_alarm")
+    {
+        if (speakerManager.playAlarm(2000))
+        {
+            mqttManager.publish("esp32/response", "播放警報聲");
+            Serial.println("🚨 播放警報聲");
+        }
+        else
+        {
+            mqttManager.publish("esp32/response", "警報聲播放失敗");
+            Serial.println("❌ 警報聲播放失敗");
+        }
+    }
+    else if (command == "play_melody")
+    {
+        // 播放簡單旋律 (Do Re Mi Fa Sol)
+        float frequencies[] = {261.63, 293.66, 329.63, 349.23, 392.00}; // C D E F G
+        int durations[] = {400, 400, 400, 400, 800};
+
+        if (speakerManager.playMelody(frequencies, durations, 5))
+        {
+            mqttManager.publish("esp32/response", "播放旋律");
+            Serial.println("🎵 播放旋律");
+        }
+        else
+        {
+            mqttManager.publish("esp32/response", "旋律播放失敗");
+            Serial.println("❌ 旋律播放失敗");
+        }
+    }
+    else if (command == "speaker_status")
+    {
+        speakerManager.printStatus();
+        String speakerStatus = String("Volume: ") + String(speakerManager.getVolume(), 2) +
+                               ", Playing: " + String(speakerManager.isPlaying() ? "Yes" : "No");
+        mqttManager.publish("esp32/speaker", speakerStatus.c_str());
+    }
+    else if (command == "speaker_enable")
+    {
+        speakerManager.enableAmplifier(true);
+        mqttManager.publish("esp32/response", "喇叭擴音器已啟用");
+        Serial.println("🔊 喇叭擴音器已啟用");
+    }
+    else if (command == "speaker_disable")
+    {
+        speakerManager.enableAmplifier(false);
+        mqttManager.publish("esp32/response", "喇叭擴音器已關閉");
+        Serial.println("🔇 喇叭擴音器已關閉");
+    }
     else if (command == "restart")
     {
         mqttManager.publish("esp32/response", "重新啟動中...");
@@ -118,6 +182,7 @@ void handleConfig(String topic, String value)
         wifiManager.setDebug(enableDebug);
         mqttManager.setDebug(enableDebug);
         audioManager.setDebug(enableDebug);
+        speakerManager.setDebug(enableDebug);
 
         String response = "Debug模式: " + String(enableDebug ? "已啟用" : "已停用");
         mqttManager.publish("esp32/response", response.c_str());
@@ -136,6 +201,54 @@ void handleConfig(String topic, String value)
         else
         {
             mqttManager.publish("esp32/response", "無效的音量閾值 (0.0-1.0)");
+        }
+    }
+    else if (topic == "esp32/config/speaker_volume")
+    {
+        float volume = value.toFloat();
+        if (volume >= 0.0 && volume <= 1.0)
+        {
+            speakerManager.setVolume(volume);
+            String response = "喇叭音量設為: " + String(volume, 2);
+            mqttManager.publish("esp32/response", response.c_str());
+            Serial.printf("🔊 喇叭音量設為: %.2f\n", volume);
+        }
+        else
+        {
+            mqttManager.publish("esp32/response", "無效的喇叭音量 (0.0-1.0)");
+        }
+    }
+    else if (topic == "esp32/config/play_tone")
+    {
+        // 格式: "frequency,duration" 例如: "1000,500"
+        int commaIndex = value.indexOf(',');
+        if (commaIndex > 0)
+        {
+            float freq = value.substring(0, commaIndex).toFloat();
+            int dur = value.substring(commaIndex + 1).toInt();
+
+            if (freq > 0 && dur > 0)
+            {
+                speakerManager.playTone(freq, dur);
+                String response = "播放音調: " + String(freq, 1) + "Hz, " + String(dur) + "ms";
+                mqttManager.publish("esp32/response", response.c_str());
+                Serial.printf("🎵 播放音調: %.1fHz, %dms\n", freq, dur);
+            }
+        }
+    }
+    else if (topic == "esp32/config/speaker_gain")
+    {
+        int gain = value.toInt();
+        if (gain >= 0 && gain <= 255)
+        {
+            speakerManager.setGain(gain);
+            String response = "喇叭增益設為: " + String(gain) + "/255";
+            mqttManager.publish("esp32/response", response.c_str());
+            Serial.printf("🔊 喇叭增益設為: %d/255\n", gain);
+        }
+        else
+        {
+            mqttManager.publish("esp32/response", "無效的增益值 (0-255)");
         }
     }
     else
@@ -222,9 +335,20 @@ void setup()
         return;
     }
 
+    // 初始化喇叭系統
+    Serial.println("🔊 初始化喇叭系統...");
+    if (!speakerManager.begin())
+    {
+        Serial.println("❌ 喇叭系統初始化失敗");
+        return;
+    }
+
     // 設定音訊回調
     audioManager.setAudioCallback(onAudioData);
     audioManager.setVolumeThreshold(0.1f); // 設定音量閾值
+
+    // 設定喇叭音量
+    speakerManager.setVolume(0.3f); // 設定適中音量
 
     // 設定MQTT回調
     mqttManager.setMessageCallback(onMQTTMessage);
@@ -253,7 +377,16 @@ void setup()
         Serial.println("❌ 音訊監控啟動失敗");
     }
 
-    Serial.println("💡 可用指令: start_audio, stop_audio, audio_status, status, ping");
+    // 播放啟動音效
+    speakerManager.playBeep(200);
+    delay(100);
+    speakerManager.playBeep(200);
+
+    Serial.println("💡 可用指令:");
+    Serial.println("   音訊: start_audio, stop_audio, audio_status");
+    Serial.println("   喇叭: play_beep, play_alarm, play_melody, speaker_status");
+    Serial.println("        speaker_enable, speaker_disable");
+    Serial.println("   系統: status, ping, restart");
 }
 
 void loop()
