@@ -44,3 +44,19 @@
 - 特徵上傳：`esp32/feat/{device}/{session}/{idx}`
 - 推論回覆：`esp32/infer/{device}`
 - 音訊分塊：`esp32/audio/{timestamp}/{chunk}`
+
+## 產生簡報（PPTX）
+- 需求：本機安裝 Python 的 `python-pptx` 套件
+  - `pip install python-pptx`
+- 產生檔案：
+  - `python tools/build_pptx.py`
+  - 輸出：`docs/edge_voice_kws_methodology.pptx`
+  - 來源：`docs/slides_outline_zh.md`（大綱）、`docs/slides_notes_zh.md`（講者備忘）、`docs/methodology_zh.md`（細節）
+  - 功能：
+    - 自動加入系統架構圖（向量方塊箭頭）
+    - 若 `pinout.jpg` 存在，插入 Pinout 圖片頁
+    - 若 `tools/ncue logo.png`（或 `tools/logo.png`）存在，右上角加入校徽（標題頁較大、內頁較小）
+    - 每頁右下有頁腳（作者/日期/頁碼）
+    - 套用中文字型（預設微軟正黑，視系統字型而定）
+     - 自動從校徽擷取主色作為標題字色（需 `Pillow`，否則用預設藍色）
+       - `pip install pillow`
