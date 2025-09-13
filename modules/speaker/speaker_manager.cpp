@@ -40,36 +40,33 @@ bool SpeakerManager::begin()
     i2s_config_t i2s_config = {
         .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX), // 傳輸模式
         .sample_rate = SAMPLE_RATE,
-        .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-        .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT, // 立體聲
+        .bits_per_sample = (i2s_bits_per_sample_t)SAMPLE_BITS,
+        .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
         .communication_format = I2S_COMM_FORMAT_STAND_I2S,
         .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-        .dma_buf_count = 4,
+        .dma_buf_count = 6,
         .dma_buf_len = BUFFER_SIZE,
         .use_apll = false,
         .tx_desc_auto_clear = true,
-        .fixed_mclk = 0};
+        .fixed_mclk = 0
+    };
 
-    // I2S pin 配置
     i2s_pin_config_t pin_config = {
         .bck_io_num = I2S_BCLK_PIN,
         .ws_io_num = I2S_WS_PIN,
         .data_out_num = I2S_DATA_PIN,
-        .data_in_num = I2S_PIN_NO_CHANGE};
+        .data_in_num = I2S_PIN_NO_CHANGE
+    };
 
-    // 安裝 I2S 驅動
-    esp_err_t result = i2s_driver_install(I2S_PORT, &i2s_config, 0, NULL);
-    if (result != ESP_OK)
+    if (i2s_driver_install(I2S_PORT, &i2s_config, 0, NULL) != ESP_OK)
     {
-        Serial.printf("❌ I2S 喇叭驅動安裝失敗: %s\n", esp_err_to_name(result));
+        Serial.println("❌ I2S 驅動安裝失敗");
         return false;
     }
 
-    // 設定 I2S pin
-    result = i2s_set_pin(I2S_PORT, &pin_config);
-    if (result != ESP_OK)
+    if (i2s_set_pin(I2S_PORT, &pin_config) != ESP_OK)
     {
-        Serial.printf("❌ I2S 喇叭 pin 設定失敗: %s\n", esp_err_to_name(result));
+        Serial.println("❌ I2S 腳位設定失敗");
         i2s_driver_uninstall(I2S_PORT);
         return false;
     }
@@ -449,3 +446,4 @@ void SpeakerManager::printStatus()
     Serial.printf("   GAIN: GPIO%d, SD: GPIO%d\n", GAIN_PIN, SD_PIN);
     Serial.printf("   擴音器狀態: %s\n", digitalRead(SD_PIN) ? "啟用" : "關閉");
 }
+

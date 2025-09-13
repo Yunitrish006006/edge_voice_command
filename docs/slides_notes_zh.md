@@ -1,0 +1,33 @@
+# 簡報講者備忘（Speaker Notes）
+
+- 封面：專題名稱、成員、指導教授、日期。
+- 動機：
+  - 邊緣語音指令的需求（低延遲、離線、隱私）。
+  - 上傳原始音容易佔頻寬與有隱私顧慮。
+  - 以特徵上傳 + 蒸餾兼顧精度與資源限制。
+- 架構：
+  - ESP32-S3 + INMP441 → I2S 錄音、VAD、log-Mel/MFCC、量化。
+  - MQTT Broker 作為資料/控制中樞；伺服器端教師/訓練/OTA。
+  - 主題通道：status/control/infer/feat/audio。
+- 邊緣流程：
+  - 25ms窗/10ms移、40-64 Mel，u8 量化；VAD 只在語音段上傳/推論。
+  - 本地學生模型先判斷，低信心才上傳特徵。
+- MQTT 設計：
+  - 控制 QoS1；特徵 QoS0/1；retain 僅用於模型版本。
+  - 範例 payload：feat 上傳 JSON+base64、infer 結果 JSON。
+- 蒸餾：
+  - 教師（CNN/CRNN/Conformer 小型版）→ 軟標籤；學生 + QAT → int8。
+  - L = CE + α·T²·KL；溫度 T=2~4；每日/每週重訓。
+- 部署/OTA：
+  - 版本公告 + 校驗；A/B 回滾與失敗處理。
+- 評估：
+  - 模型（精度/F1/混淆）+ 邊緣（延遲/資源/能耗）+ 網路（bytes/s）。
+  - 蒸餾收益與消融（溫度、α、量化前後）。
+- Demo 走法：
+  - 啟動 Broker GUI 和監控 GUI；
+  - 跑 feature_server（訂閱 feat → 回 infer）；
+  - 跑 feature_simulator（發假特徵）；
+  - 觀察 `esp32/feat/#` 與 `esp32/infer/#`；可切到 audio 接收器演示音訊塊。
+- 風險/對策：網路抖動（QoS/重送）、隱私（特徵為主）、回滾、漂移偵測。
+- 時程：W1-2…W11-12；目前進度與下一步。
+

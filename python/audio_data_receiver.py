@@ -53,8 +53,10 @@ class AudioDataReceiver:
             print("✅ MQTT連接成功")
             
             # 訂閱音訊資料主題
-            client.subscribe("esp32/audio/+/+")  # 新格式: esp32/audio/timestamp/chunk_index
-            client.subscribe("esp32/audio/info")  # 訂閱資訊通知
+            topics = self.config.get_topics()
+            audio_prefix = topics.get('audio_prefix', 'esp32/audio')
+            client.subscribe(f"{audio_prefix}/+/+")  # 格式: <prefix>/timestamp/chunk_index
+            client.subscribe(f"{audio_prefix}/info")  # 訂閱資訊通知
             
             print("📡 已訂閱音訊資料主題")
         else:
@@ -66,10 +68,12 @@ class AudioDataReceiver:
         payload = msg.payload
         
         try:
-            if topic == "esp32/audio/info":
+            topics = self.config.get_topics()
+            audio_prefix = topics.get('audio_prefix', 'esp32/audio')
+            if topic == f"{audio_prefix}/info":
                 # 完成通知
                 self.handle_completion_message(payload)
-            elif topic.startswith("esp32/audio/"):
+            elif topic.startswith(f"{audio_prefix}/"):
                 # 音訊資料塊
                 self.handle_audio_chunk(topic, payload)
         except Exception as e:
@@ -77,11 +81,16 @@ class AudioDataReceiver:
     
     def handle_audio_chunk(self, topic, payload):
         """處理音訊資料塊"""
-        # 解析新主題格式: esp32/audio/timestamp/chunk_index
+        # 解析主題格式: <audio_prefix>/timestamp/chunk_index（如 esp32/audio/1690000000000/12）
         parts = topic.split('/')
+        # 預期 parts: [esp32, audio, timestamp, chunk_index]
         if len(parts) >= 4:
-            timestamp = int(parts[3])
-            chunk_index = int(parts[4])
+            try:
+                timestamp = int(parts[2])
+                chunk_index = int(parts[3])
+            except Exception:
+                print(f"⚠️ 主題解析失敗: {topic}")
+                return
             
             # 儲存音訊塊
             if timestamp not in self.audio_chunks:
@@ -90,7 +99,7 @@ class AudioDataReceiver:
             
             self.audio_chunks[timestamp][chunk_index] = payload
             self.total_chunks_received += 1
-            
+
             print(f"📥 收到音訊塊: 時間戳={timestamp}, 塊={chunk_index}, 大小={len(payload)} 位元組")
     
     def handle_completion_message(self, payload):

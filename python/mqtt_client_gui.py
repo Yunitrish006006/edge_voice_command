@@ -161,8 +161,17 @@ class MQTTMonitorClient:
         preset_frame = ttk.Frame(topic_frame)
         preset_frame.pack(side=tk.LEFT, padx=(10, 0))
         
+        # 從配置取得常用前綴
+        topics = self.config.get_topics()
+        audio_prefix = topics.get('audio_prefix', 'esp32/audio') + '/#'
+        feat_prefix = topics.get('feature_prefix', 'esp32/feat') + '/#'
+        infer_prefix = topics.get('infer_prefix', 'esp32/infer') + '/#'
+
         presets = [
             ("ESP32", "esp32/#"),
+            ("特徵", feat_prefix),
+            ("推論", infer_prefix),
+            ("音訊", audio_prefix),
             ("全部", "#")
         ]
         for name, topic in presets:

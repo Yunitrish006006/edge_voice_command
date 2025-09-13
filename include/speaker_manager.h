@@ -81,3 +81,4 @@ public:
 };
 
 #endif // SPEAKER_MANAGER_H
+

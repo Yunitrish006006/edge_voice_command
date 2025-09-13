@@ -1,19 +1,44 @@
 #include "wifi_manager.h"
 #include "mqtt_manager.h"
 #include "audio_manager.h"
+
+#ifndef ENABLE_SPEAKER
+#define ENABLE_SPEAKER 0
+#endif
+
+#if ENABLE_SPEAKER
 #include "speaker_manager.h"
+#endif
 
 // MQTT 設定
 const char *mqtt_server = "192.168.98.106";
 const int mqtt_port = 1883;
 const char *client_id = "ESP32_Voice_Command";
 
+// MQTT 主題前綴（與 python/config.py 對齊）
+static const char *TOPIC_PREFIX_BASE = "esp32";
+static const char *TOPIC_AUDIO_PREFIX = "esp32/audio";
+static const char *TOPIC_FEATURE_PREFIX = "esp32/feat";  // 若未使用可保留占位
+static const char *TOPIC_INFER_PREFIX = "esp32/infer";    // 若需訂閱伺服器回覆可使用
+static const char *TOPIC_STATUS = "esp32/status";
+static const char *TOPIC_COMMAND = "esp32/command";
+static const char *TOPIC_CONFIG_PREFIX = "esp32/config/";
+static const char *TOPIC_CONFIG_WILDCARD = "esp32/config/+";
+static const char *TOPIC_RESPONSE = "esp32/response";
+static const char *TOPIC_SPEAKER = "esp32/speaker";
+static const char *TOPIC_VOICE_DETECTED = "esp32/voice/detected";
+
+// 是否啟用喇叭/播放裝置功能（預設停用，保持專案精簡）
+static const bool SPEAKER_ENABLED = (ENABLE_SPEAKER != 0);
+
 // 創建管理器實例
 WiFiManager wifiManager("YUNROG", "0937565253");
 MQTTConfig mqttConfig(mqtt_server, mqtt_port, client_id);
 MQTTManager mqttManager(mqttConfig, false); // 關閉MQTT debug減少輸出
 AudioManager audioManager(false);           // 關閉音訊debug
-SpeakerManager speakerManager(true);        // 啟用喇叭debug
+#if ENABLE_SPEAKER
+SpeakerManager speakerManager(true);        // 啟用喇叭debug（可選）
+#endif
 
 // 函數聲明
 void handleCommand(String command);
@@ -37,12 +62,12 @@ void onMQTTMessage(char *topic, uint8_t *payload, unsigned int length)
     String topicStr = String(topic);
     String messageStr = String(message);
 
-    if (topicStr == "esp32/command")
+    if (topicStr == TOPIC_COMMAND)
     {
         Serial.printf("🎯 處理指令: %s\n", message);
         handleCommand(messageStr);
     }
-    else if (topicStr.startsWith("esp32/config/"))
+    else if (topicStr.startsWith(TOPIC_CONFIG_PREFIX))
     {
         Serial.printf("⚙️ 處理配置: %s\n", message);
         handleConfig(topicStr, messageStr);
@@ -60,7 +85,7 @@ void handleCommand(String command)
 
     if (command == "ping")
     {
-        mqttManager.publish("esp32/response", "pong");
+        mqttManager.publish(TOPIC_RESPONSE, "pong");
         Serial.println("🏓 回應 ping 指令");
     }
     else if (command == "status")
@@ -68,19 +93,19 @@ void handleCommand(String command)
         String status = "WiFi: " + String(wifiManager.isConnected() ? "已連接" : "斷開") +
                         ", MQTT: " + String(mqttManager.isConnected() ? "已連接" : "斷開") +
                         ", Audio: " + String(audioManager.isRecording() ? "錄音中" : "停止");
-        mqttManager.publish("esp32/response", status.c_str());
+        mqttManager.publish(TOPIC_RESPONSE, status.c_str());
         Serial.println("📊 回應狀態查詢");
     }
     else if (command == "start_audio")
     {
         if (audioManager.startRecording())
         {
-            mqttManager.publish("esp32/response", "音訊錄製已開始");
+            mqttManager.publish(TOPIC_RESPONSE, "音訊錄製已開始");
             Serial.println("🎙️ 開始音訊錄製");
         }
         else
         {
-            mqttManager.publish("esp32/response", "音訊錄製啟動失敗");
+            mqttManager.publish(TOPIC_RESPONSE, "音訊錄製啟動失敗");
             Serial.println("❌ 音訊錄製啟動失敗");
         }
     }
@@ -89,12 +114,12 @@ void handleCommand(String command)
         audioManager.enableAudioDataCollection(true, 2000); // 改為2秒間隔
         if (audioManager.startRecording())
         {
-            mqttManager.publish("esp32/response", "音訊資料收集已開始");
+            mqttManager.publish(TOPIC_RESPONSE, "音訊資料收集已開始");
             Serial.println("📊 開始音訊資料收集和錄製 (1秒音訊/2秒間隔)");
         }
         else
         {
-            mqttManager.publish("esp32/response", "音訊資料收集啟動失敗");
+            mqttManager.publish(TOPIC_RESPONSE, "音訊資料收集啟動失敗");
             Serial.println("❌ 音訊資料收集啟動失敗");
         }
     }
@@ -102,7 +127,7 @@ void handleCommand(String command)
     {
         audioManager.stopRecording();
         audioManager.enableAudioDataCollection(false);
-        mqttManager.publish("esp32/response", "音訊錄製已停止");
+        mqttManager.publish(TOPIC_RESPONSE, "音訊錄製已停止");
         Serial.println("⏹️ 停止音訊錄製");
     }
     else if (command == "audio_status")
@@ -111,73 +136,97 @@ void handleCommand(String command)
         String audioStatus = String("Volume: ") + String(audioManager.getCurrentVolume(), 3) +
                              ", Recording: " + String(audioManager.isRecording() ? "Yes" : "No") +
                              ", DataCollection: " + String(audioManager.isAudioDataCollectionEnabled() ? "Yes" : "No");
-        mqttManager.publish("esp32/audio", audioStatus.c_str());
+        mqttManager.publish(TOPIC_AUDIO_PREFIX, audioStatus.c_str());
     }
     else if (command == "play_beep")
     {
+#if ENABLE_SPEAKER
         if (speakerManager.playBeep(500))
         {
-            mqttManager.publish("esp32/response", "播放嗶聲");
+            mqttManager.publish(TOPIC_RESPONSE, "播放嗶聲");
             Serial.println("🔊 播放嗶聲");
         }
         else
         {
-            mqttManager.publish("esp32/response", "嗶聲播放失敗");
+            mqttManager.publish(TOPIC_RESPONSE, "嗶聲播放失敗");
             Serial.println("❌ 嗶聲播放失敗");
         }
+#else
+        mqttManager.publish(TOPIC_RESPONSE, "喇叭功能已停用");
+#endif
     }
     else if (command == "play_alarm")
     {
+#if ENABLE_SPEAKER
         if (speakerManager.playAlarm(2000))
         {
-            mqttManager.publish("esp32/response", "播放警報聲");
+            mqttManager.publish(TOPIC_RESPONSE, "播放警報聲");
             Serial.println("🚨 播放警報聲");
         }
         else
         {
-            mqttManager.publish("esp32/response", "警報聲播放失敗");
+            mqttManager.publish(TOPIC_RESPONSE, "警報聲播放失敗");
             Serial.println("❌ 警報聲播放失敗");
         }
+#else
+        mqttManager.publish(TOPIC_RESPONSE, "喇叭功能已停用");
+#endif
     }
     else if (command == "play_melody")
     {
+#if ENABLE_SPEAKER
         // 播放簡單旋律 (Do Re Mi Fa Sol)
         float frequencies[] = {261.63, 293.66, 329.63, 349.23, 392.00}; // C D E F G
         int durations[] = {400, 400, 400, 400, 800};
 
         if (speakerManager.playMelody(frequencies, durations, 5))
         {
-            mqttManager.publish("esp32/response", "播放旋律");
+            mqttManager.publish(TOPIC_RESPONSE, "播放旋律");
             Serial.println("🎵 播放旋律");
         }
         else
         {
-            mqttManager.publish("esp32/response", "旋律播放失敗");
+            mqttManager.publish(TOPIC_RESPONSE, "旋律播放失敗");
             Serial.println("❌ 旋律播放失敗");
         }
+#else
+        mqttManager.publish(TOPIC_RESPONSE, "喇叭功能已停用");
+#endif
     }
     else if (command == "speaker_status")
     {
+#if ENABLE_SPEAKER
         speakerManager.printStatus();
         String speakerStatus = String("Volume: ") + String(speakerManager.getVolume(), 2) +
                                ", Playing: " + String(speakerManager.isPlaying() ? "Yes" : "No");
-        mqttManager.publish("esp32/speaker", speakerStatus.c_str());
+        mqttManager.publish(TOPIC_SPEAKER, speakerStatus.c_str());
+#else
+        mqttManager.publish(TOPIC_RESPONSE, "喇叭功能已停用");
+#endif
     }
     else if (command == "speaker_enable")
     {
+#if ENABLE_SPEAKER
         speakerManager.enableAmplifier(true);
-        mqttManager.publish("esp32/response", "喇叭擴音器已啟用");
+        mqttManager.publish(TOPIC_RESPONSE, "喇叭擴音器已啟用");
         Serial.println("🔊 喇叭擴音器已啟用");
+#else
+        mqttManager.publish(TOPIC_RESPONSE, "喇叭功能已停用");
+#endif
     }
     else if (command == "speaker_disable")
     {
+#if ENABLE_SPEAKER
         speakerManager.enableAmplifier(false);
-        mqttManager.publish("esp32/response", "喇叭擴音器已關閉");
+        mqttManager.publish(TOPIC_RESPONSE, "喇叭擴音器已關閉");
         Serial.println("🔇 喇叭擴音器已關閉");
+#else
+        mqttManager.publish(TOPIC_RESPONSE, "喇叭功能已停用");
+#endif
     }
     else if (command == "restart")
     {
-        mqttManager.publish("esp32/response", "重新啟動中...");
+        mqttManager.publish(TOPIC_RESPONSE, "重新啟動中...");
         Serial.println("🔄 執行重新啟動");
         delay(1000);
         ESP.restart();
@@ -185,7 +234,7 @@ void handleCommand(String command)
     else
     {
         String response = "未知指令: " + command;
-        mqttManager.publish("esp32/response", response.c_str());
+        mqttManager.publish(TOPIC_RESPONSE, response.c_str());
         Serial.printf("❓ 未知指令: %s\n", command.c_str());
     }
 }
@@ -202,7 +251,7 @@ void handleConfig(String topic, String value)
         speakerManager.setDebug(enableDebug);
 
         String response = "Debug模式: " + String(enableDebug ? "已啟用" : "已停用");
-        mqttManager.publish("esp32/response", response.c_str());
+        mqttManager.publish(TOPIC_RESPONSE, response.c_str());
         Serial.printf("🔧 設定Debug模式: %s\n", enableDebug ? "啟用" : "停用");
     }
     else if (topic == "esp32/config/volume_threshold")
@@ -212,31 +261,36 @@ void handleConfig(String topic, String value)
         {
             audioManager.setVolumeThreshold(threshold);
             String response = "音量閾值設為: " + String(threshold, 3);
-            mqttManager.publish("esp32/response", response.c_str());
+            mqttManager.publish(TOPIC_RESPONSE, response.c_str());
             Serial.printf("🔊 音量閾值設為: %.3f\n", threshold);
         }
         else
         {
-            mqttManager.publish("esp32/response", "無效的音量閾值 (0.0-1.0)");
+            mqttManager.publish(TOPIC_RESPONSE, "無效的音量閾值 (0.0-1.0)");
         }
     }
     else if (topic == "esp32/config/speaker_volume")
     {
+#if ENABLE_SPEAKER
         float volume = value.toFloat();
         if (volume >= 0.0 && volume <= 1.0)
         {
             speakerManager.setVolume(volume);
             String response = "喇叭音量設為: " + String(volume, 2);
-            mqttManager.publish("esp32/response", response.c_str());
+            mqttManager.publish(TOPIC_RESPONSE, response.c_str());
             Serial.printf("🔊 喇叭音量設為: %.2f\n", volume);
         }
         else
         {
-            mqttManager.publish("esp32/response", "無效的喇叭音量 (0.0-1.0)");
+            mqttManager.publish(TOPIC_RESPONSE, "無效的喇叭音量 (0.0-1.0)");
         }
+#else
+        mqttManager.publish(TOPIC_RESPONSE, "喇叭功能已停用");
+#endif
     }
     else if (topic == "esp32/config/play_tone")
     {
+#if ENABLE_SPEAKER
         // 格式: "frequency,duration" 例如: "1000,500"
         int commaIndex = value.indexOf(',');
         if (commaIndex > 0)
@@ -248,30 +302,37 @@ void handleConfig(String topic, String value)
             {
                 speakerManager.playTone(freq, dur);
                 String response = "播放音調: " + String(freq, 1) + "Hz, " + String(dur) + "ms";
-                mqttManager.publish("esp32/response", response.c_str());
+                mqttManager.publish(TOPIC_RESPONSE, response.c_str());
                 Serial.printf("🎵 播放音調: %.1fHz, %dms\n", freq, dur);
             }
         }
+#else
+        mqttManager.publish(TOPIC_RESPONSE, "喇叭功能已停用");
+#endif
     }
     else if (topic == "esp32/config/speaker_gain")
     {
+#if ENABLE_SPEAKER
         int gain = value.toInt();
         if (gain >= 0 && gain <= 255)
         {
             speakerManager.setGain(gain);
             String response = "喇叭增益設為: " + String(gain) + "/255";
-            mqttManager.publish("esp32/response", response.c_str());
+            mqttManager.publish(TOPIC_RESPONSE, response.c_str());
             Serial.printf("🔊 喇叭增益設為: %d/255\n", gain);
         }
         else
         {
-            mqttManager.publish("esp32/response", "無效的增益值 (0-255)");
+            mqttManager.publish(TOPIC_RESPONSE, "無效的增益值 (0-255)");
         }
+#else
+        mqttManager.publish(TOPIC_RESPONSE, "喇叭功能已停用");
+#endif
     }
     else
     {
         String response = "未知配置: " + topic;
-        mqttManager.publish("esp32/response", response.c_str());
+        mqttManager.publish(TOPIC_RESPONSE, response.c_str());
         Serial.printf("❓ 未知配置: %s\n", topic.c_str());
     }
 }
@@ -281,7 +342,10 @@ void onAudioData(float volume, float *frequencies, int freqCount)
 {
     // 發送音量數據到MQTT
     String volumeData = String(volume, 3);
-    mqttManager.publish("esp32/audio/volume", volumeData.c_str());
+    {
+        String topic = String(TOPIC_AUDIO_PREFIX) + "/volume";
+        mqttManager.publish(topic.c_str(), volumeData.c_str());
+    }
 
     // 發送主要頻率數據（簡化版）
     if (freqCount > 0)
@@ -291,14 +355,15 @@ void onAudioData(float volume, float *frequencies, int freqCount)
         {
             freqData += "," + String(frequencies[i], 1);
         }
-        mqttManager.publish("esp32/audio/frequencies", freqData.c_str());
+        String topicFreq = String(TOPIC_AUDIO_PREFIX) + "/frequencies";
+        mqttManager.publish(topicFreq.c_str(), freqData.c_str());
     }
 
     // 語音檢測邏輯 (簡單示例)
     if (volume > 0.3) // 高音量可能是語音
     {
         Serial.printf("🗣️ 檢測到語音活動，音量: %.3f\n", volume);
-        mqttManager.publish("esp32/voice/detected", "true");
+        mqttManager.publish(TOPIC_VOICE_DETECTED, "true");
     }
 }
 
@@ -329,7 +394,7 @@ void onAudioDataChunk(const uint8_t *audioData, size_t dataSize, unsigned long t
             size_t chunkSize = min(maxChunkSize, dataSize - chunkStart);
 
             // 簡化主題名稱
-            String topic = "esp32/audio/" + String(timestamp) + "/" + String(chunkIndex);
+            String topic = String(TOPIC_AUDIO_PREFIX) + "/" + String(timestamp) + "/" + String(chunkIndex);
 
             // 嘗試發送
             bool success = mqttManager.publish(topic.c_str(), audioData + chunkStart, chunkSize);
@@ -361,7 +426,10 @@ void onAudioDataChunk(const uint8_t *audioData, size_t dataSize, unsigned long t
 
         // 發送完成通知
         String completeMsg = String(timestamp) + ":" + String(dataSize) + ":" + String(successCount) + ":" + String(totalChunks);
-        mqttManager.publish("esp32/audio/info", completeMsg.c_str());
+        {
+            String infoTopic = String(TOPIC_AUDIO_PREFIX) + "/info";
+            mqttManager.publish(infoTopic.c_str(), completeMsg.c_str());
+        }
 
         Serial.printf("📤 音訊傳送完成: %d/%d 塊成功 (%s)\n",
                       successCount, totalChunks, allSuccess ? "✅ 全部成功" : "⚠️ 部分失敗");
@@ -380,13 +448,13 @@ void onMQTTConnect(bool connected)
         Serial.println("🔗 MQTT 連接成功，開始訂閱主題...");
 
         // 訂閱指令主題
-        mqttManager.subscribe("esp32/command");
+        mqttManager.subscribe(TOPIC_COMMAND);
 
         // 訂閱配置主題 (使用通配符)
-        mqttManager.subscribe("esp32/config/+");
+        mqttManager.subscribe(TOPIC_CONFIG_WILDCARD);
 
         // 發送上線通知
-        mqttManager.publish("esp32/status", "online", true);
+        mqttManager.publish(TOPIC_STATUS, "online", true);
 
         Serial.println("✅ 主題訂閱完成");
     }
@@ -422,13 +490,17 @@ void setup()
         return;
     }
 
-    // 初始化喇叭系統
+    // 初始化喇叭系統（可選）
+#if ENABLE_SPEAKER
     Serial.println("🔊 初始化喇叭系統...");
     if (!speakerManager.begin())
     {
         Serial.println("❌ 喇叭系統初始化失敗");
         return;
     }
+#else
+    Serial.println("🔇 喇叭功能停用，略過初始化");
+#endif
 
     // 設定音訊回調
     audioManager.setAudioCallback(onAudioData);
@@ -436,7 +508,9 @@ void setup()
     audioManager.setVolumeThreshold(0.1f); // 設定音量閾值
 
     // 設定喇叭音量
+#if ENABLE_SPEAKER
     speakerManager.setVolume(0.3f); // 設定適中音量
+#endif
 
     // 設定MQTT回調
     mqttManager.setMessageCallback(onMQTTMessage);
@@ -467,8 +541,15 @@ void setup()
 
     Serial.println("💡 可用指令:");
     Serial.println("   音訊: start_audio, start_audio_data, stop_audio, audio_status");
-    Serial.println("   喇叭: play_beep, play_alarm, play_melody, speaker_status");
-    Serial.println("        speaker_enable, speaker_disable");
+    if (SPEAKER_ENABLED)
+    {
+        Serial.println("   喇叭: play_beep, play_alarm, play_melody, speaker_status");
+        Serial.println("        speaker_enable, speaker_disable");
+    }
+    else
+    {
+        Serial.println("   喇叭: （已停用）");
+    }
     Serial.println("   系統: status, ping, restart");
     Serial.println("🎵 系統就緒，使用 MQTT 指令測試喇叭功能");
 }

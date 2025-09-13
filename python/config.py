@@ -33,7 +33,10 @@ class MQTTConfig:
             'voice_command': 'esp32/voice_command',
             'device_status': 'esp32/status',
             'sensor_data': 'esp32/sensors',
-            'control': 'esp32/control'
+            'control': 'esp32/control',
+            'audio_prefix': 'esp32/audio',
+            'feature_prefix': 'esp32/feat',
+            'infer_prefix': 'esp32/infer'
         }
         
         self.config['client'] = {
@@ -47,6 +50,12 @@ class MQTTConfig:
             'window_height': '1300',
             'auto_scroll': 'true',
             'max_log_lines': '1000'
+        }
+        
+        # 伺服器端示範參數
+        self.config['server'] = {
+            'frames_to_decide': '6',
+            'energy_threshold': '0.6'
         }
         
         self.save_config()
@@ -75,7 +84,16 @@ class MQTTConfig:
             'voice_command': self.config.get('topics', 'voice_command', fallback='esp32/voice_command'),
             'device_status': self.config.get('topics', 'device_status', fallback='esp32/status'),
             'sensor_data': self.config.get('topics', 'sensor_data', fallback='esp32/sensors'),
-            'control': self.config.get('topics', 'control', fallback='esp32/control')
+            'control': self.config.get('topics', 'control', fallback='esp32/control'),
+            'audio_prefix': self.config.get('topics', 'audio_prefix', fallback='esp32/audio'),
+            'feature_prefix': self.config.get('topics', 'feature_prefix', fallback='esp32/feat'),
+            'infer_prefix': self.config.get('topics', 'infer_prefix', fallback='esp32/infer')
+        }
+
+    def get_server_config(self):
+        """（可選）伺服器端行為配置"""
+        return {
+            'frames_to_decide': self.config.getint('server', 'frames_to_decide', fallback=6)
         }
     
     def get_client_config(self):
