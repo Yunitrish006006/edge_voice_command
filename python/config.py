@@ -22,7 +22,7 @@ class MQTTConfig:
     def create_default_config(self):
         """創建預設配置"""
         self.config['broker'] = {
-            'custom_host': '192.168.98.106',
+            'custom_host': '192.168.98.105',
             'custom_port': '1883',
             'external_host': 'broker.hivemq.com',
             'external_port': '1883',

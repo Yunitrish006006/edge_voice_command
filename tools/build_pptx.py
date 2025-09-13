@@ -30,6 +30,7 @@ PINOUT = ROOT / "pinout.jpg"
 OUTPUT = ROOT / "docs" / "edge_voice_kws_methodology.pptx"
 LOGO_PRIMARY = ROOT / "tools" / "ncue logo.png"
 LOGO_FALLBACK = ROOT / "tools" / "logo.png"
+ARCH_IMG = ROOT / "docs" / "architecture.png"
 SELECTED_LOGO = None
 DEFAULT_TITLE_RGB = RGBColor(0, 67, 137)  # 預設學院藍色系，若無法自動取色
 TITLE_RGB = DEFAULT_TITLE_RGB
@@ -322,7 +323,11 @@ def main():
 
     # 增加系統架構與 Pinout 圖片
     add_advisors_slide(prs)
-    add_system_architecture_slide(prs)
+    # 若已渲染 PNG 架構圖，直接插入；否則建立向量方塊版
+    if ARCH_IMG.exists():
+        add_image_slide(prs, "系統架構圖", ARCH_IMG)
+    else:
+        add_system_architecture_slide(prs)
     add_image_slide(prs, "ESP32‑S3 引腳圖（Pinout）", PINOUT)
 
     # 從 methodology 擴充內容

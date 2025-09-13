@@ -45,6 +45,13 @@
 - 推論回覆：`esp32/infer/{device}`
 - 音訊分塊：`esp32/audio/{timestamp}/{chunk}`
 
+## 系統架構圖
+- 詳見：`docs/architecture_zh.md`
+- 產出 PNG：
+  - 安裝：`pip install pillow`
+  - 執行：`python tools/render_arch.py`
+  - 輸出：`docs/architecture.png`（PPT 生成時會自動插入）
+
 ## 產生簡報（PPTX）
 - 需求：本機安裝 Python 的 `python-pptx` 套件
   - `pip install python-pptx`
