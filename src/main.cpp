@@ -18,8 +18,8 @@ const char *client_id = "ESP32_Voice_Command";
 // MQTT 主題前綴（與 python/config.py 對齊）
 static const char *TOPIC_PREFIX_BASE = "esp32";
 static const char *TOPIC_AUDIO_PREFIX = "esp32/audio";
-static const char *TOPIC_FEATURE_PREFIX = "esp32/feat";  // 若未使用可保留占位
-static const char *TOPIC_INFER_PREFIX = "esp32/infer";    // 若需訂閱伺服器回覆可使用
+static const char *TOPIC_FEATURE_PREFIX = "esp32/feat"; // 若未使用可保留占位
+static const char *TOPIC_INFER_PREFIX = "esp32/infer";  // 若需訂閱伺服器回覆可使用
 static const char *TOPIC_STATUS = "esp32/status";
 static const char *TOPIC_COMMAND = "esp32/command";
 static const char *TOPIC_CONFIG_PREFIX = "esp32/config/";
@@ -37,7 +37,7 @@ MQTTConfig mqttConfig(mqtt_server, mqtt_port, client_id);
 MQTTManager mqttManager(mqttConfig, false); // 關閉MQTT debug減少輸出
 AudioManager audioManager(false);           // 關閉音訊debug
 #if ENABLE_SPEAKER
-SpeakerManager speakerManager(true);        // 啟用喇叭debug（可選）
+SpeakerManager speakerManager(true); // 啟用喇叭debug（可選）
 #endif
 
 // 函數聲明
@@ -248,7 +248,7 @@ void handleConfig(String topic, String value)
         wifiManager.setDebug(enableDebug);
         mqttManager.setDebug(enableDebug);
         audioManager.setDebug(enableDebug);
-        speakerManager.setDebug(enableDebug);
+        // speakerManager.setDebug(enableDebug);
 
         String response = "Debug模式: " + String(enableDebug ? "已啟用" : "已停用");
         mqttManager.publish(TOPIC_RESPONSE, response.c_str());
